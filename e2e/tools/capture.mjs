@@ -4,8 +4,13 @@
 // (default 4173; scripts/serve-web.sh). Starts the server itself if none.
 //
 //   node e2e/tools/capture.mjs --out test-reports/verify-<ts>
-//       [--scenario score_nine]        start from a scenario fixture
-//       [--keys "Space,ArrowRight:500"] one step per key; KEY:ms holds the key
+//       [--scenario bolts]             start from a scenario fixture
+//       [--keys "KeyD:500,Digit2,Move:640:200,Click,Click:3000"]
+//                                       one step per entry: KEY presses a key,
+//                                       KEY:ms holds it; Move:X:Y moves the
+//                                       mouse to canvas pixel (X, Y); Click
+//                                       clicks, Click:ms holds the left button;
+//                                       Wheel:DY scrolls
 //       [--wait-state '<js predicate>'] after the inputs, wait until the
 //                                       predicate over `s` (= __bevyState) is true
 //       [--freeze --ticks 30]           deterministic: step N fixed ticks per step
@@ -108,8 +113,23 @@ try {
   await advance();
   await shot('initial');
   for (const spec of keys) {
-    const [key, hold] = spec.split(':');
-    if (hold) {
+    const [key, hold, extra] = spec.split(':');
+    if (key === 'Move') {
+      await page.mouse.move(Number(hold), Number(extra));
+      await advance();
+    } else if (key === 'Wheel') {
+      await page.mouse.wheel(0, Number(hold));
+      await advance();
+    } else if (key === 'Click' && hold) {
+      await page.mouse.down();
+      if (freeze) await advance();
+      else await page.waitForTimeout(Number(hold));
+      await page.mouse.up();
+    } else if (key === 'Click') {
+      await page.mouse.down();
+      await page.mouse.up();
+      await advance();
+    } else if (hold) {
       await page.keyboard.down(key);
       if (freeze) await advance();
       else await page.waitForTimeout(Number(hold));
