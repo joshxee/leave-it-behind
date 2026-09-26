@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cargo build)",
+      "Bash(cargo build *)",
+      "Bash(cargo test)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo run --features dev)",
+      "Bash(npx playwright test)",
+      "Bash(npx playwright test *)",
+      "Bash(scripts/build-web.sh)",
+      "Bash(scripts/build-web.sh --release)",
+      "Bash(E2E=1 scripts/build-web.sh)",
+      "Bash(scripts/serve-web.sh)",
+      "Bash(scripts/test-all.sh)",
+      "Bash(scripts/test-all.sh *)",
+      "Bash(scripts/smoke-native.sh)",
+      "Bash(node e2e/tools/capture.mjs *)",
+      "Bash(node scripts/build-report.mjs *)"
+    ],
+    "ask": [
+      "Edit(/scripts/**)",
+      "Write(/scripts/**)",
+      "Edit(/.github/**)",
+      "Write(/.github/**)",
+      "Edit(/.claude/**)",
+      "Write(/.claude/**)",
+      "Edit(/ci/budgets.env)",
+      "Write(/ci/budgets.env)",
+      "Edit(/deny.toml)",
+      "Write(/deny.toml)",
+      "Edit(/e2e/specs/__screenshots__/**)",
+      "Write(/e2e/specs/__screenshots__/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "if": "Edit(*.rs)", "command": "cargo fmt", "timeout": 60 },
+          { "type": "command", "if": "Write(*.rs)", "command": "cargo fmt", "timeout": 60 }
+        ]
+      }
+    ]
+  }
+}

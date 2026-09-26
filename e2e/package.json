@@ -5,8 +5,7 @@
   "scripts": {
     "test": "playwright test",
     "test:ci": "playwright test --grep-invert @visual",
-    "report": "node build-report.mjs",
-    "capture": "node capture.mjs"
+    "capture": "node tools/capture.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

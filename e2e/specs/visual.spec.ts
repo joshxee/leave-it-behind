@@ -10,6 +10,6 @@ test('starter scene matches baseline @visual', async ({ page }, testInfo) => {
     await step(page, 30);
     await expect(page.locator('#bevy-canvas')).toHaveScreenshot('starter-scene.png');
   } finally {
-    await attachShot(page, testInfo, 'visual', true);
+    await attachShot(page, testInfo, 'visual: frozen default scene after 30 ticks (baseline comparison)', true);
   }
 });

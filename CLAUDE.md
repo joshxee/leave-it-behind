@@ -1,66 +1,86 @@
-# Leave It Behind: notes for AI agents
+# Leave It Behind: agent index
 
-Bevy **0.19.1** game (see `Cargo.toml`). Bevy's API changes every minor
-version (0.17 renamed events to messages: `add_message`, `MessageReader`,
-`MessageWriter`, `Messages<T>`). Check APIs against the pinned version's
-source in `~/.cargo/registry/src/*/bevy_*-0.19.1/` or its docs, never memory.
+> **Hard limit: 150 lines** (`scripts/test-all.sh` and CI fail above it). This file is an
+> index, not a manual. When adding guidance, put the detail in `TESTING.md` or the relevant
+> feature's `src/<feature>/README.md`, and add at most one line here that points to it.
 
-## Layout
+## Bevy version
 
-- `src/main.rs`: only `DefaultPlugins` + `GamePlugin`. Keep it that way.
-- `src/lib.rs`: `GamePlugin`, made of one plugin per feature module
-  (`player`, `scoring`, `ui`, `audio`, `state`, `rng`, `scenarios`, `version`).
-- `src/state.rs`: `AppState` (Boot → Playing) and `GameSet`
-  (Input → Simulate → Resolve → Present), chained in `Startup`, `Update`, and `FixedUpdate`.
-- `src/determinism.rs`: `TestDeterminismPlugin` (fixed seed, one fixed tick per frame).
-- `src/e2e_bridge.rs`: browser test bridge, compiled only for wasm32 with `--features e2e`.
-- `src/scenarios/`: scenario fixtures shared by native tests, the web build and `e2e/capture.mjs`.
-- `tests/integration/`: the single integration-test binary (see Testing).
-- `scripts/`: `build-web.sh` (the only way to build the web version), `serve-web.sh`, `smoke-native.sh`.
-- `e2e/`: Playwright specs, `build-report.mjs`, `capture.mjs`.
+- Pinned: **bevy 0.19.1** (`Cargo.toml`). APIs change every minor version (0.17 renamed
+  events to messages: `add_message`, `MessageReader/Writer`, `Messages<T>`).
+- Check every API against 0.19 docs/examples or `~/.cargo/registry/src/*/bevy_*-0.19.1/`.
+  Never write Bevy code from memory.
 
-## Rules
+## Architecture
 
-- **Gameplay runs in `FixedUpdate`** and reads input through `PlayerIntent`
-  (written in `Update`), never `just_pressed` inside `FixedUpdate`.
-- **Randomness only via `ResMut<GameRng>`.** Never call `rand::rng()`,
-  `thread_rng()` or `getrandom` from gameplay code. Tests and e2e fix the seed.
-- **Never add a top-level file under `tests/`.** Each one links Bevy as a
-  separate binary. Add a module to `tests/integration/main.rs` instead.
-- **Every new game situation gets a scenario** in `src/scenarios/`, and that
-  scenario is listed in the feature's `README.md`. Use scenarios in tests and
-  in `capture.mjs --scenario` rather than playing through to a state.
-- **Size budget:** `ci/budgets.env` `WASM_BUDGET_KB` is a reviewed limit.
-  Never raise it to make a check pass. Find what grew, or trim Bevy features
-  (`default-features = false` plus an explicit list) and record the dropped
-  features below.
-- **Screenshot baselines** (`e2e/specs/__screenshots__`) are generated on
-  Linux only and approved by a human or the primary model, never by a subagent.
-- The `dev` feature (dynamic linking) is for local native builds only. Never
-  enable it in CI, release, or wasm builds.
-- The test bridge must never ship: `build-web.sh` fails a non-e2e build that
-  contains `__bevyReady`, `__bevyState`, `__bevyStep`, `BEVY_READY`, or `scenario=`.
-- Hide non-deterministic UI (FPS, timestamps, version text) under `e2e`.
+- `src/main.rs` only adds `DefaultPlugins` + `GamePlugin`. All game code is in the library (`src/lib.rs`).
+- One plugin per feature module, each with a `README.md`: `player/`, `scoring/`, `ui/`, `audio/`, `scenarios/`.
+- Infrastructure: `state.rs` (`AppState`, `GameSet` order), `rng.rs` (`GameRng`),
+  `determinism.rs` (`TestDeterminismPlugin`), `version.rs`, `e2e_bridge.rs` (wasm + `e2e` only).
+- **New feature plugin:** create `src/<feature>/mod.rs` with `pub struct <Feature>Plugin`,
+  add `pub mod <feature>;` in `lib.rs`, add the plugin to the tuple in
+  `GamePlugin::build`, put systems in a `GameSet` (gameplay in `FixedUpdate`,
+  `.run_if(in_state(AppState::Playing))`), and write `src/<feature>/README.md`
+  (purpose, components/resources, test module, scenarios).
+- Release process: `docs/RELEASING.md`.
 
 ## Commands
 
 ```bash
-cargo test                                   # unit + integration (headless)
-cargo clippy --all-targets -- -D warnings
-cargo clippy --all-targets --features e2e -- -D warnings
-cargo fmt --check
-scripts/smoke-native.sh                      # native render smoke → test-reports/smoke/
-E2E=1 scripts/build-web.sh                   # web build with test bridge
-(cd e2e && npm ci && npx playwright test --grep-invert @visual)
-node e2e/build-report.mjs                    # → test-reports/e2e/summary.md
-node e2e/capture.mjs --scenario score_nine --ticks 30 --keys Space
-scripts/build-web.sh --release               # player build, budget + leak check
-cargo run --features dev                     # fast local iteration
+cargo build                          # native build
+cargo run --features dev             # run natively (dynamic linking, local only)
+cargo test                           # unit + integration (headless)
+cargo clippy --all-targets --all-features -- -D warnings
+cargo fmt --all
+E2E=1 scripts/build-web.sh           # web build with the test bridge (-> wasm/)
+scripts/build-web.sh --release       # player web build: size budget + leak check
+scripts/serve-web.sh                 # serve wasm/ on http://localhost:4173
+scripts/smoke-native.sh              # headless native screenshot
+(cd e2e && npx playwright test)      # browser e2e (needs an E2E web build)
+scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports/latest/REPORT.md
 ```
+
+## Skills and agents
+
+- `/run`, `/verify`: follow `.claude/skills/run-game/SKILL.md`. `/verify` is overridden
+  by `.claude/skills/verify/SKILL.md`. Regenerate the run recipe with
+  `/run-skill-generator` if the build or launch process changes.
+- `/test-report`: full suite on a cheap model (`test-runner` agent). Returns only the REPORT path + STATUS.
+- `/finish-feature`: end-of-feature loop (tests → /verify → /test-report → fix, max 3 loops).
+
+## Definition of done (every feature)
+
+1. Unit tests and ECS integration tests added (`TESTING.md`).
+2. Playwright spec added or updated if the change is visible or interactive.
+3. `/verify` run and its screenshots inspected.
+4. `/test-report` run and `REPORT.md` reviewed (`STATUS: PASS`).
+5. fmt and clippy clean.
+
+## Rules
+
+- Gameplay runs in `FixedUpdate`, reading input via `PlayerIntent`-style resources written in `Update`.
+- Randomness only through `ResMut<GameRng>`. Never `rand::rng()` / `thread_rng()`.
+- Never add a top-level file under `tests/`. Add a module to `tests/integration/main.rs` (`TESTING.md`).
+- Every new game situation gets a scenario in `src/scenarios/`, listed in the feature's `README.md`.
+- `ci/budgets.env` (`WASM_BUDGET_KB`) is a reviewed limit. Never raise it to pass a check.
+- Screenshot baselines are Linux-only and approved by a human or the primary model (`TESTING.md`).
+- The `e2e` test bridge must never ship. `build-web.sh` fails non-e2e builds containing it.
+- Hide non-deterministic UI (FPS, timestamps, version text) under `e2e`.
+- `dev` (dynamic linking) is for local native builds only. Never enable it in CI, release, or wasm.
+
+## Gotchas
+
+- Call `app.update()` once before asserting on anything `Startup` creates.
+- `MinimalPlugins` has no window, input, assets, or rendering: `test_app()` adds input
+  resources and a fake `Window`. Asset-dependent plugins skip themselves without `AssetServer`.
+- In a frame, `FixedUpdate` runs before `Update`, so input read in `Update` applies next frame.
+- wasm is single-threaded: no blocking, no `std::thread`, no `std::time::Instant` (use `bevy::platform::time`).
+- Browsers block audio until the user interacts with the page.
+- Don't enable `dynamic_linking` on wasm.
+- `wasm-bindgen-cli` must exactly match the `wasm-bindgen` crate version in `Cargo.lock`.
+- Assets load relative to the executable unless `BEVY_ASSET_ROOT` is set (as `smoke-native.sh` does).
 
 ## Bevy features
 
-Default features (2d, 3d, ui, audio) plus `wav` (for `Clank.wav`) and, on
-wasm, `web`. Nothing trimmed yet. If the size budget is exceeded, 3d
-(pbr, gltf) and picking are the first candidates to drop; list any dropped
-feature here.
+Default features plus `wav` and, on wasm, `web`. Nothing trimmed yet. If the wasm budget is
+exceeded, drop 3d (pbr, gltf) and picking first, and list the dropped features here.

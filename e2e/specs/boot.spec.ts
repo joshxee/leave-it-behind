@@ -11,6 +11,6 @@ test('boots with no errors and reaches Playing', async ({ page }, testInfo) => {
     await expect(page.locator('#crash-overlay')).toBeHidden();
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'boot');
+    await attachShot(page, testInfo, 'boot: dark arena, player square centered, "SCORE: 0" top-left, no crash overlay');
   }
 });

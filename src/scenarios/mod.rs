@@ -3,7 +3,7 @@
 //!
 //! The same functions are used by native tests
 //! (`tests/integration/common.rs::test_app_with`), by the web build under the
-//! `e2e` feature (`?scenario=<name>`), and by `e2e/capture.mjs --scenario`.
+//! `e2e` feature (`?scenario=<name>`), and by `e2e/tools/capture.mjs --scenario`.
 //!
 //! Adding one: add a variant, give it a name in [`Scenario::name`], add it to
 //! [`Scenario::ALL`], and write its setup function below.

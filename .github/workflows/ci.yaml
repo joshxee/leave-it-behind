@@ -101,9 +101,6 @@ jobs:
         working-directory: e2e
         # @visual is skipped until the first Linux baseline is committed (TESTING.md).
         run: npx playwright test --grep-invert @visual
-      - name: Summary
-        if: always()
-        run: node e2e/build-report.mjs || true
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

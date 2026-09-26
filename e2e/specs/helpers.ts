@@ -60,7 +60,11 @@ export async function step(page: Page, n: number) {
   await page.waitForFunction((t) => (window.__bevyState?.tick ?? 0) >= t && window.__bevyState?.frozen, target);
 }
 
-/** Attaches a named screenshot to the report, pass or fail. */
+/**
+ * Attaches a screenshot to the report, pass or fail. `name` is
+ * "<label>: <what the screenshot should show>"; the report's screenshot
+ * index uses it verbatim.
+ */
 export async function attachShot(page: Page, testInfo: TestInfo, name: string, canvasOnly = false) {
   const body = canvasOnly
     ? await page.locator('#bevy-canvas').screenshot()

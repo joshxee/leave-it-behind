@@ -16,7 +16,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  // A test that passes only on retry is reported as flaky by build-report.mjs.
+  // A test that passes only on retry is reported as flaky by scripts/build-report.mjs.
   retries: process.env.CI ? 1 : 0,
   reporter: [
     ['list'],

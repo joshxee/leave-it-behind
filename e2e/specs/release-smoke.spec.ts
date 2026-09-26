@@ -14,7 +14,7 @@ test('release build runs for 20s without crashing @release-smoke', async ({ page
     shot = await page.locator('#bevy-canvas').screenshot();
     expect(await distinctColors(page, shot, 2), 'canvas should not be a single solid color').toBeGreaterThan(1);
   } finally {
-    await testInfo.attach('release-smoke', {
+    await testInfo.attach('release-smoke: canvas after 20s, game rendering (not a solid color), no crash overlay', {
       body: shot ?? (await page.screenshot({ fullPage: true })),
       contentType: 'image/png',
     });

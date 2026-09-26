@@ -7,7 +7,7 @@ test('space scores and arrows move the player', async ({ page }, testInfo) => {
     await openGame(page);
     await page.locator('#bevy-canvas').click();
     const before = await gameState(page);
-    await attachShot(page, testInfo, 'before', true);
+    await attachShot(page, testInfo, 'before: canvas, SCORE: 0, player square centered', true);
 
     await page.keyboard.press('Space');
     await page.waitForFunction((s) => window.__bevyState!.score === s + 1, before.score);
@@ -21,7 +21,7 @@ test('space scores and arrows move the player', async ({ page }, testInfo) => {
     expect(after.player.x).toBeGreaterThan(before.player.x);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'after', true);
+    await attachShot(page, testInfo, 'after-space-and-right: SCORE: 1, player square moved right of center', true);
   }
 });
 
@@ -30,6 +30,6 @@ test('score_nine scenario starts one below the threshold', async ({ page }, test
     await openGame(page, { scenario: 'score_nine' });
     expect((await gameState(page)).score).toBe(9);
   } finally {
-    await attachShot(page, testInfo, 'score_nine', true);
+    await attachShot(page, testInfo, 'score_nine: SCORE: 9, player square centered', true);
   }
 });
