@@ -66,10 +66,12 @@ export async function step(page: Page, n: number) {
  * index uses it verbatim.
  */
 export async function attachShot(page: Page, testInfo: TestInfo, name: string, canvasOnly = false) {
-  const body = canvasOnly
-    ? await page.locator('#bevy-canvas').screenshot()
-    : await page.screenshot({ fullPage: true });
-  await testInfo.attach(name, { body, contentType: 'image/png' });
+  // Written to a file (not attached as a body) so the JSON results carry a path for REPORT.md.
+  const label = name.split(':')[0].trim().replace(/[^\w-]+/g, '_');
+  const path = testInfo.outputPath(`${label}.png`);
+  if (canvasOnly) await page.locator('#bevy-canvas').screenshot({ path });
+  else await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
 /**

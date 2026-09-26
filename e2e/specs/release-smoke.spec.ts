@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { collectErrors, distinctColors } from './helpers';
 
@@ -14,8 +15,10 @@ test('release build runs for 20s without crashing @release-smoke', async ({ page
     shot = await page.locator('#bevy-canvas').screenshot();
     expect(await distinctColors(page, shot, 2), 'canvas should not be a single solid color').toBeGreaterThan(1);
   } finally {
+    const path = testInfo.outputPath('release-smoke.png');
+    writeFileSync(path, shot ?? (await page.screenshot({ fullPage: true })));
     await testInfo.attach('release-smoke: canvas after 20s, game rendering (not a solid color), no crash overlay', {
-      body: shot ?? (await page.screenshot({ fullPage: true })),
+      path,
       contentType: 'image/png',
     });
   }
