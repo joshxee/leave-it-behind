@@ -6,6 +6,8 @@
 #     E2E=1               build with the `e2e` feature (test bridge + scenarios)
 #     SKIP_BUDGET=1       skip the size budget check (never in CI)
 #
+# The gzipped size budget (ci/budgets.env) is enforced with --release only.
+#
 # Both modes build the wasm-release profile; --release also runs wasm-opt.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -57,7 +59,8 @@ fi
 # Size budget (gzipped).
 gz_kb=$(( $(gzip -9 -c "$WASM" | wc -c) / 1024 ))
 echo "wasm size: ${gz_kb} KiB gzipped"
-if [ -z "${SKIP_BUDGET:-}" ]; then
+# The budget applies to optimized (--release) output only.
+if [ "$RELEASE" = "1" ] && [ -z "${SKIP_BUDGET:-}" ]; then
   # shellcheck source=../ci/budgets.env
   . ci/budgets.env
   if [ "$gz_kb" -gt "$WASM_BUDGET_KB" ]; then

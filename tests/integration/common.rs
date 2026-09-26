@@ -40,7 +40,9 @@ pub fn boot(app: &mut App) {
 
 /// Holds `key` for exactly one frame.
 pub fn tap(app: &mut App, key: KeyCode) {
-    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
     app.update();
     let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
     input.release(key);

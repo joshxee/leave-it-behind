@@ -3,7 +3,7 @@
 //! runs can fix the seed.
 
 use bevy::prelude::*;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 #[derive(Resource)]
 pub struct GameRng(SmallRng);

@@ -14,6 +14,8 @@ rm -f screenshot-smoke.png
 cargo build --features smoke
 
 export CI_TESTING_CONFIG="ci/smoke.ron"
+# Assets resolve relative to the executable unless told otherwise.
+export BEVY_ASSET_ROOT="$PWD"
 BIN="target/debug/leave-it-behind"
 [ -f "$BIN.exe" ] && BIN="$BIN.exe"
 
@@ -26,7 +28,13 @@ run() {
   fi
 }
 
-run timeout 300 "$BIN"
+LOG="$OUT_DIR/smoke.log"
+run timeout 300 "$BIN" 2>&1 | tee "$LOG"
+
+if grep -E "Path not found|panicked" "$LOG" >/dev/null; then
+  echo "smoke: errors in log ($LOG)" >&2
+  exit 1
+fi
 
 if [ ! -f screenshot-smoke.png ]; then
   echo "smoke: no screenshot produced" >&2

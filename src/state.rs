@@ -39,18 +39,18 @@ pub struct StatePlugin;
 impl Plugin for StatePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>();
-        for schedule in [Startup.intern(), Update.intern(), FixedUpdate.intern()] {
-            app.configure_sets(
-                schedule,
-                (
-                    GameSet::Input,
-                    GameSet::Simulate,
-                    GameSet::Resolve,
-                    GameSet::Present,
-                )
-                    .chain(),
-            );
-        }
+        let order = || {
+            (
+                GameSet::Input,
+                GameSet::Simulate,
+                GameSet::Resolve,
+                GameSet::Present,
+            )
+                .chain()
+        };
+        app.configure_sets(Startup, order())
+            .configure_sets(Update, order())
+            .configure_sets(FixedUpdate, order());
         app.add_systems(Update, finish_boot.run_if(in_state(AppState::Boot)));
     }
 }

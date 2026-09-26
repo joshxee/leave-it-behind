@@ -15,10 +15,10 @@ use bevy::prelude::*;
 use bevy::time::TimeSystems;
 use wasm_bindgen::prelude::*;
 
+use crate::AppState;
 use crate::determinism::FixedTick;
 use crate::player::Player;
 use crate::scoring::Score;
-use crate::AppState;
 
 const SNAPSHOT_EVERY: u32 = 5;
 
@@ -50,7 +50,9 @@ impl Plugin for E2eBridgePlugin {
 
 fn query_param(key: &str) -> Option<String> {
     let search = web_sys::window()?.location().search().ok()?;
-    web_sys::UrlSearchParams::new_with_str(&search).ok()?.get(key)
+    web_sys::UrlSearchParams::new_with_str(&search)
+        .ok()?
+        .get(key)
 }
 
 fn set_global(key: &str, value: &JsValue) {

@@ -92,7 +92,11 @@ fn move_player(
     mut players: Query<&mut Transform, With<Player>>,
 ) {
     for mut transform in &mut players {
-        let next = step_position(transform.translation.truncate(), intent.direction, time.delta_secs());
+        let next = step_position(
+            transform.translation.truncate(),
+            intent.direction,
+            time.delta_secs(),
+        );
         transform.translation = next.extend(transform.translation.z);
     }
 }
