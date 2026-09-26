@@ -58,7 +58,8 @@ function parseCargoTest(log) {
         kind,
         name: out[1],
         location: panic ? `${panic[1]}:${panic[2]}` : '(unknown)',
-        message: trim(body.filter((l) => !/^note: run with `RUST_BACKTRACE/.test(l)).join('\n')),
+        // Stop at the backtrace: the panic line and assertion are what matter.
+        message: trim(body.slice(0, body.findIndex((l) => /^stack backtrace:/.test(l)) >>> 0).filter((l) => !/^note: (run with `RUST_BACKTRACE|Some details are omitted)/.test(l)).join('\n')),
       });
     }
   }
