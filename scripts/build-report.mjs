@@ -172,7 +172,7 @@ if (pw.flakyTests.length) {
 
 const shots = [...pw.shots];
 if (existsSync(join(dir, 'screenshots', 'smoke-native.png'))) {
-  shots.unshift({ test: 'native smoke (ci/smoke.ron)', path: 'screenshots/smoke-native.png', description: 'default scene at frame 60: player square centered, score text top-left, version bottom-right' });
+  shots.unshift({ test: 'native smoke (ci/smoke.ron)', path: 'screenshots/smoke-native.png', description: "level one at frame 60: engineer's quarters, orange engineer holding the wrench, ARRIVAL IN countdown top centre, tool belt bottom, version bottom-right" });
 }
 out.push('## Screenshots index', '');
 if (!shots.length) out.push('(none)');
