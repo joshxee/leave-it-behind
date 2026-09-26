@@ -1,7 +1,7 @@
 ---
 name: run-game
 description: How to build and launch this Bevy game natively and in the browser (e2e web build with the test bridge), drive it with keyboard input, capture screenshots and game state, and tear it down. Followed by /run, /verify, and any agent that needs the running game.
-allowed-tools: Bash(cargo run --features dev) Bash(E2E=1 scripts/build-web.sh) Bash(scripts/serve-web.sh) Bash(node e2e/tools/capture.mjs *) Bash(scripts/smoke-native.sh) Bash(curl -sf http://localhost:4173/index.html) Bash(pkill -f http-server) Bash(pkill -f "http.server 4173")
+allowed-tools: Bash(cargo run --features dev) Bash(E2E=1 scripts/build-web.sh) Bash(scripts/serve-web.sh) Bash(node e2e/tools/capture.mjs *) Bash(scripts/smoke-native.sh) Bash(curl -sf http://localhost:4173/index.html) Bash(pkill -f "[h]ttp-server") Bash(pkill -f "[h]ttp.server 4173")
 ---
 
 # Run the game
@@ -46,7 +46,8 @@ node e2e/tools/capture.mjs --out test-reports/verify-<ts> [--scenario score_nine
 ## Teardown
 
 ```bash
-pkill -f http-server; pkill -f "http.server 4173"
+pkill -f "[h]ttp-server"; pkill -f "[h]ttp.server 4173"
 ```
 
+The `[h]` keeps `pkill` from matching (and killing) the shell running it.
 Or stop the background task that runs `scripts/serve-web.sh`.

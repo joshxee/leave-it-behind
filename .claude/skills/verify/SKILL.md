@@ -1,7 +1,7 @@
 ---
 name: verify
 description: Confirm a code change works in the running game (browser build driven by keyboard, screenshots read and compared), without falling back to tests or type checks. Project override of the built-in /verify.
-allowed-tools: Bash(E2E=1 scripts/build-web.sh) Bash(scripts/serve-web.sh) Bash(node e2e/tools/capture.mjs *) Bash(scripts/smoke-native.sh) Bash(curl -sf http://localhost:4173/index.html) Bash(pkill -f http-server)
+allowed-tools: Bash(E2E=1 scripts/build-web.sh) Bash(scripts/serve-web.sh) Bash(node e2e/tools/capture.mjs *) Bash(scripts/smoke-native.sh) Bash(curl -sf http://localhost:4173/index.html) Bash(pkill -f "[h]ttp-server") Bash(pkill -f "[h]ttp.server 4173")
 ---
 
 # Verify a change in the running game
