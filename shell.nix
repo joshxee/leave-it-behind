@@ -21,6 +21,7 @@ pkgs.mkShell {
     vulkan-loader
     wayland
     wayland-protocols
+    lld
   ];
 
   shellHook = ''
@@ -36,6 +37,7 @@ pkgs.mkShell {
       pkgs.vulkan-loader
       pkgs.wayland
       pkgs.wayland-protocols
+      pkgs.lld
     ]}"
   '';
 }
