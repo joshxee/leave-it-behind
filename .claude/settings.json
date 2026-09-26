@@ -24,17 +24,11 @@
     ],
     "ask": [
       "Edit(/scripts/**)",
-      "Write(/scripts/**)",
       "Edit(/.github/**)",
-      "Write(/.github/**)",
       "Edit(/.claude/**)",
-      "Write(/.claude/**)",
       "Edit(/ci/budgets.env)",
-      "Write(/ci/budgets.env)",
       "Edit(/deny.toml)",
-      "Write(/deny.toml)",
-      "Edit(/e2e/specs/__screenshots__/**)",
-      "Write(/e2e/specs/__screenshots__/**)"
+      "Edit(/e2e/specs/__screenshots__/**)"
     ]
   },
   "hooks": {
@@ -42,8 +36,12 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "if": "Edit(*.rs)", "command": "cargo fmt", "timeout": 60 },
-          { "type": "command", "if": "Write(*.rs)", "command": "cargo fmt", "timeout": 60 }
+          {
+            "type": "command",
+            "if": "Edit(*.rs)",
+            "command": "cargo fmt",
+            "timeout": 60
+          }
         ]
       }
     ]
