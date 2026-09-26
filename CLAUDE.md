@@ -14,9 +14,13 @@
 ## Architecture
 
 - `src/main.rs` only adds `DefaultPlugins` + `GamePlugin`. All game code is in the library (`src/lib.rs`).
-- One plugin per feature module, each with a `README.md`: `player/`, `scoring/`, `ui/`, `audio/`, `scenarios/`.
-- Infrastructure: `state.rs` (`AppState`, `GameSet` order), `rng.rs` (`GameRng`),
-  `determinism.rs` (`TestDeterminismPlugin`), `version.rs`, `e2e_bridge.rs` (wasm + `e2e` only).
+- The game: level one of a top-down ship-repair time-management game. Design and tuning
+  live in the feature READMEs (start with `src/level/README.md` and `src/faults/README.md`).
+- One plugin per feature module, each with a `README.md`: `ship/`, `player/`, `tools/`,
+  `faults/`, `level/`, `diagnostics/`, `alarm/`, `ui/`, `scenarios/`.
+- Infrastructure: `state.rs` (`AppState`, `GameSet` order, `RunSet`, `RunEntity`), `rng.rs` (`GameRng`),
+  `shapes.rs` (circle/ring sprites), `palette.rs`, `determinism.rs` (`TestDeterminismPlugin`),
+  `version.rs`, `e2e_bridge.rs` (wasm + `e2e` only).
 - **New feature plugin:** create `src/<feature>/mod.rs` with `pub struct <Feature>Plugin`,
   add `pub mod <feature>;` in `lib.rs`, add the plugin to the tuple in
   `GamePlugin::build`, put systems in a `GameSet` (gameplay in `FixedUpdate`,
@@ -59,6 +63,10 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
 ## Rules
 
 - Gameplay runs in `FixedUpdate`, reading input via `PlayerIntent`-style resources written in `Update`.
+- A run starts in `OnEnter(AppState::Playing)` (launch and every R restart): tag per-run entities
+  `RunEntity` and reset per-run resources in `RunSet::Spawn`.
+- Placeholder art only: `Sprite` rectangles and `Shapes` circles/rings, colors from `palette.rs`.
+- UI text is ASCII only (the bundled font has no other glyphs).
 - Randomness only through `ResMut<GameRng>`. Never `rand::rng()` / `thread_rng()`.
 - Never add a top-level file under `tests/`. Add a module to `tests/integration/main.rs` (`TESTING.md`).
 - Every new game situation gets a scenario in `src/scenarios/`, listed in the feature's `README.md`.
@@ -75,7 +83,9 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
   resources and a fake `Window`. Asset-dependent plugins skip themselves without `AssetServer`.
 - In a frame, `FixedUpdate` runs before `Update`, so input read in `Update` applies next frame.
 - wasm is single-threaded: no blocking, no `std::thread`, no `std::time::Instant` (use `bevy::platform::time`).
-- Browsers block audio until the user interacts with the page.
+- Browsers block audio until the user interacts with the page (the game has no sound yet).
+- Aiming converts the cursor with the room camera's `anchor`: after teleporting the player in a
+  test, run a frame before `aim_at` so the camera has cut to the new room.
 - Don't enable `dynamic_linking` on wasm.
 - `wasm-bindgen-cli` must exactly match the `wasm-bindgen` crate version in `Cargo.lock`.
 - Assets load relative to the executable unless `BEVY_ASSET_ROOT` is set (as `smoke-native.sh` does).

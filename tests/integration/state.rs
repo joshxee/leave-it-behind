@@ -1,18 +1,13 @@
 use bevy::prelude::*;
 use leave_it_behind::AppState;
 
-use crate::common::{boot, test_app};
+use crate::common::{boot, frame, state, test_app};
 
 #[test]
 fn boots_into_playing() {
     let mut app = test_app();
-    app.update();
-    // Boot requests the transition; it applies on the next frame.
     boot(&mut app);
-    assert_eq!(
-        *app.world().resource::<State<AppState>>().get(),
-        AppState::Playing
-    );
+    assert_eq!(state(&app), AppState::Playing);
 }
 
 #[test]
@@ -21,10 +16,25 @@ fn state_can_be_driven_by_tests() {
     boot(&mut app);
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
-        .set(AppState::Boot);
-    app.update();
+        .set(AppState::Lost);
+    frame(&mut app);
+    assert_eq!(state(&app), AppState::Lost);
+}
+
+#[test]
+fn gameplay_freezes_outside_playing() {
+    let mut app = test_app();
+    boot(&mut app);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Landed);
+    frame(&mut app);
+    let journey = *app.world().resource::<leave_it_behind::level::Journey>();
+    for _ in 0..30 {
+        frame(&mut app);
+    }
     assert_eq!(
-        *app.world().resource::<State<AppState>>().get(),
-        AppState::Boot
+        *app.world().resource::<leave_it_behind::level::Journey>(),
+        journey
     );
 }

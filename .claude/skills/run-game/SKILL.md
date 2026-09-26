@@ -12,9 +12,11 @@ allowed-tools: Bash(cargo run --features dev) Bash(E2E=1 scripts/build-web.sh) B
 cargo run --features dev
 ```
 
-Opens a 1280×720 window. Arrow keys move, Space scores. Needs a display. For a
-headless check, use `scripts/smoke-native.sh` (screenshot in `test-reports/smoke/smoke.png`).
-Start from a scenario natively with `SCENARIO=score_nine cargo run --features dev,e2e`.
+Opens a 1280×720 window. WASD moves, the mouse aims, left click uses the held
+tool, 1 / 2 or the wheel switch tools, E interacts, R restarts after landing or
+losing. Needs a display. For a headless check, use `scripts/smoke-native.sh`
+(screenshot in `test-reports/smoke/smoke.png`).
+Start from a scenario natively with `SCENARIO=bolts cargo run --features dev,e2e`.
 
 ## Web (with the test bridge)
 
@@ -32,13 +34,22 @@ Start from a scenario natively with `SCENARIO=score_nine cargo run --features de
 ## Drive it
 
 ```bash
-node e2e/tools/capture.mjs --out test-reports/verify-<ts> [--scenario score_nine] [--keys "Space,ArrowRight:500"] [--wait-state 's.score === 10'] [--freeze --ticks 30]
+node e2e/tools/capture.mjs --out test-reports/verify-<ts> [--scenario breach] [--keys "Move:480:100,Click:3000"] [--wait-state 's.faults.length === 0'] [--freeze --ticks 30]
 ```
 
-- Waits for `__bevyReady` (the game has rendered in `Playing`), then presses
-  each key (`KEY:ms` holds it) and saves `NN-<step>.png` after each step.
-- `--wait-state` takes a JS predicate over `s` (`window.__bevyState`:
-  `state, tick, score, frozen, player {x, y}, entities {players}`).
+- Waits for `__bevyReady` (the game has rendered in `Playing`), then runs each
+  step and saves `NN-<step>.png` after it: `KEY` presses a key (`KeyD`, `e`,
+  `Digit2`), `KEY:ms` holds it, `Move:X:Y` moves the mouse to canvas pixel
+  (X, Y), `Click` clicks, `Click:ms` holds the left button, `Wheel:DY` scrolls.
+  Move the mouse before clicking: a click also re-aims the engineer.
+  With `--freeze`, a held key or button lasts `--ticks` ticks instead of `ms`.
+- The canvas is 1280×720, one world unit per pixel, centered on the current
+  room: world (x, y) is canvas (640 + x − camera.x, 360 − (y − camera.y)).
+- `--wait-state` takes a JS predicate over `s` (`window.__bevyState`; the shape
+  is `BevyState` in `e2e/specs/helpers.ts`: `state, tick, room, camera, player,
+  tool, tape, faults, looseBolts, nav, diag, alarm, stats, ...`).
+- At about 15 fps under software rendering, each frame is one game tick: keep
+  `--ticks` per step under ~600 (the tool waits 60 s per step).
 - Writes `states.json`, `console.json`, and `result.json`. Exits 1 on console
   errors, page errors, the crash overlay, or no `__bevyReady`.
 - It starts the server itself if nothing is listening on 4173.

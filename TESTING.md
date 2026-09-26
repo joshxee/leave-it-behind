@@ -29,18 +29,16 @@ mod tests {
 
     #[test]
     fn pure_rule() {
-        assert_eq!(add_points(9, 1), (10, true));
+        assert_eq!(cycle_tool(Tool::Wrench, 1), Tool::Tape);
     }
 
     #[test]
     fn one_system() {
         let mut world = World::new();
-        world.init_resource::<Score>();
-        world.init_resource::<Messages<ScoreChanged>>();
-        world.init_resource::<Messages<ThresholdReached>>();
-        world.insert_resource(PlayerIntent { score_presses: 2, ..default() });
-        world.run_system_once(apply_score_presses).unwrap();
-        assert_eq!(world.resource::<Score>().0, 2);
+        world.init_resource::<Alarm>();
+        world.spawn(Fault::new(Site::Helm, 50.0));
+        world.run_system_once(some_system).unwrap();
+        assert_eq!(world.resource::<Alarm>().active, 1);
     }
 }
 ```
@@ -54,59 +52,64 @@ against Bevy as its own binary (`autotests = false`; one `[[test]]` in
 
 Helpers (`tests/integration/common.rs`):
 
-- `test_app()`: `MinimalPlugins` + `StatesPlugin` + `ButtonInput` resources + a
-  fake `Window` + `GamePlugin` + `TestDeterminismPlugin`. `InputPlugin` is
+- `test_app()`: `MinimalPlugins` + `StatesPlugin` + `ButtonInput` / scroll resources + a
+  fake 1280×720 `PrimaryWindow` + `GamePlugin` + `TestDeterminismPlugin`. `InputPlugin` is
   deliberately absent so tests control presses. Startup has not run yet.
 - `test_app_with(Scenario::X)`: starts from a scenario, already booted into `Playing`.
-- `boot(&mut app)`, `tap(&mut app, key)`, `run_frames(&mut app, n)`.
+- `boot`, `frame` (one tick, then clears just-pressed like `InputPlugin`), `run_frames`,
+  `run_until(app, max, pred)`, `secs(s)` (frames in `s` seconds), `state`.
+- Input: `press` / `release` / `tap` keys, `mouse_down` / `mouse_up` / `click`, `scroll`,
+  `aim_at(world_point)` (puts the cursor over a world point in the current room).
+- Setup only: `put_player`, `player_pos`.
 
 Rules:
 
 - Every `app.update()` is exactly one `FixedUpdate` tick (`TimeUpdateStrategy::ManualDuration`). Never sleep.
-- Input read in `Update` is applied by `FixedUpdate` next frame, so after `tap`, call `app.update()` once more.
+- Input read in `Update` is applied by `FixedUpdate` next frame, so after `tap`, call `frame` once more.
+- Use `tap` for E, R and number keys (they act on just-pressed); hold WASD with `press`.
+- Aiming is relative to the current room's camera: after `put_player` into another room, run a frame before `aim_at`.
 - Messages: take a cursor with `get_cursor_current()` before acting, then `cursor.read(messages)`.
-- States: set `NextState<AppState>`, `update()`, then assert `State<AppState>`.
+- States: set `NextState<AppState>`, `frame`, then assert `State<AppState>`.
+- Level-design checks may set `Fault::repair` directly (see `tests/integration/level.rs`); control tests must use real input.
 
 Template (`tests/integration/<feature>.rs`):
 
 ```rust
 use bevy::prelude::*;
-use leave_it_behind::scoring::{Score, ScoreChanged};
 use leave_it_behind::Scenario;
+use leave_it_behind::level::RunStats;
 
-use crate::common::{tap, test_app_with};
+use crate::common::{mouse_down, run_until, secs, test_app_with};
 
 #[test]
-fn space_scores_from_scenario() {
-    let mut app = test_app_with(Scenario::ScoreNine);
-    let mut cursor = app.world().resource::<Messages<ScoreChanged>>().get_cursor_current();
-
-    tap(&mut app, KeyCode::Space);
-    app.update();
-
-    assert_eq!(*app.world().resource::<Score>(), Score(10));
-    let messages = app.world().resource::<Messages<ScoreChanged>>();
-    assert_eq!(cursor.read(messages).count(), 1);
+fn holding_tape_on_a_breach_seals_it() {
+    let mut app = test_app_with(Scenario::Breach);
+    mouse_down(&mut app);
+    run_until(&mut app, secs(5.0), |app| app.world().resource::<RunStats>().fixed == 1);
 }
 ```
 
 ## Scenarios
 
-Fixtures in `src/scenarios/mod.rs`: `fn(&mut World)` run after startup
-spawning. The same scenario is used by native tests (`test_app_with`), the web
+Fixtures in `src/scenarios/mod.rs`: `fn(&mut World)` run on top of every fresh
+run (`OnEnter(AppState::Playing)`, after the player, tools and fault plan
+exist). The same scenario is used by native tests (`test_app_with`), the web
 build (`?scenario=<name>`), native e2e runs (`SCENARIO=<name> cargo run --features e2e`),
-and `node e2e/tools/capture.mjs --scenario <name>`. Current ones: `default`, `score_nine`.
+and `node e2e/tools/capture.mjs --scenario <name>`. Current ones: `default`, `quiet`,
+`bolts`, `breach`, `drift`, `diagnostics`, `scramble`, `landing`, `breach_critical`,
+`tape_low` (see `src/scenarios/README.md`).
 
 Template:
 
 ```rust
-pub enum Scenario { /* ... */ BossFight }                // 1. variant (+ add to ALL)
-Scenario::BossFight => "boss_fight",                     // 2. name()
-Scenario::BossFight => boss_fight(world),                // 3. apply()
+pub enum Scenario { /* ... */ TwoBreaches }               // 1. variant (+ add to ALL)
+Scenario::TwoBreaches => "two_breaches",                  // 2. name()
+Scenario::TwoBreaches => two_breaches(world),             // 3. apply()
 
-fn boss_fight(world: &mut World) {
-    world.insert_resource(Score(42));
-    world.spawn((Boss, Transform::from_xyz(200.0, 0.0, 0.0)));
+fn two_breaches(world: &mut World) {
+    quiet(world);                                         // no scheduled faults
+    start(world, Site::AirlockPortAft, 50.0);
+    start(world, Site::HullPortFore, 45.0);
 }
 ```
 
@@ -139,9 +142,16 @@ cd e2e && npm ci && npx playwright test --grep-invert @visual   # serve-web.sh s
 
 Test bridge (`src/e2e_bridge.rs`, wasm + `--features e2e` only):
 `window.__bevyReady` after the first rendered frame in `Playing`, and
-`window.__bevyState` = `{state, tick, score, frozen, ready, player: {x, y}, entities: {players}}`.
-With `?freeze=1`, `window.__bevyStep(n)` advances exactly `n` fixed ticks
-(helper: `step(page, n)`). Under `e2e`, the canvas is fixed at 1280×720 and the seed is fixed.
+`window.__bevyState`: state, tick, room, camera, player (position, facing,
+locked), focus, tool, tape, faults (kind, site, room, remaining, repair,
+position), loose bolts, nav marker, diagnostics view, alarm, run stats. The
+full shape is `BevyState` in `e2e/specs/helpers.ts`. With `?freeze=1`,
+`window.__bevyStep(n)` advances exactly `n` fixed ticks (helper: `step(page, n)`).
+Under `e2e`, the canvas is fixed at 1280×720, the seed is fixed, and each frame
+advances game time by exactly one tick (slow software rendering slows the game,
+it never skips ticks). Helpers: `waitForState(page, pred)`, `toScreen` /
+`aimAt(page, worldPoint)` (the canvas is at the page origin, one world unit per
+pixel, centered on the room), `averageColor` (tint checks without baselines).
 
 Rules: use real Playwright keyboard/mouse input (no JS-to-ECS backdoor). Every
 test attaches at least one screenshot, pass or fail, named
@@ -151,29 +161,33 @@ Template (`e2e/specs/<feature>.spec.ts`):
 
 ```ts
 import { expect, test } from '@playwright/test';
-import { attachShot, collectErrors, gameState, openGame } from './helpers';
+import { aimAt, attachShot, collectErrors, openGame, waitForState } from './helpers';
 
-test('space from score_nine reaches the threshold', async ({ page }, testInfo) => {
+test('tape seals the breach', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
   try {
-    await openGame(page, { scenario: 'score_nine' });
-    await page.locator('#bevy-canvas').click();
-    await page.keyboard.press('Space');
-    await page.waitForFunction(() => window.__bevyState!.score === 10);
+    await openGame(page, { scenario: 'breach' });   // also focuses the canvas
+    const s = await waitForState(page, (t) => t.faults.length === 1);
+    await aimAt(page, s.faults[0]);
+    await page.mouse.down();
+    await waitForState(page, (t) => t.faults.length === 0, 40_000);
+    await page.mouse.up();
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'after-space: score text reads "SCORE: 10"', true);
+    await attachShot(page, testInfo, 'sealed: tape strips over the spot, no hole left');
   }
 });
 ```
+
+Focus the canvas (`openGame` does) rather than clicking it: a click also uses the held tool.
 
 CI runs with `retries: 1`. A test that passes only on retry is **flaky**, and
 `REPORT.md` lists it under "Flaky" as a warning. Fix it; don't ignore it.
 
 ## Visual baselines
 
-`visual.spec.ts` compares the frozen canvas to
-`e2e/specs/__screenshots__/visual.spec.ts/starter-scene.png`. Baselines depend
+`visual.spec.ts` compares the frozen canvas (`quiet` scenario, 30 ticks) to
+`e2e/specs/__screenshots__/visual.spec.ts/level-start.png`. Baselines depend
 on the platform, so generate them **only on Linux**:
 
 - GitHub: run the **Update snapshots** workflow, download the `snapshots` artifact, review it, and commit.

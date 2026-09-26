@@ -1,16 +1,25 @@
 import { expect, test } from '@playwright/test';
 import { attachShot, collectErrors, gameState, openGame } from './helpers';
 
-test('boots with no errors and reaches Playing', async ({ page }, testInfo) => {
+test('boots into level one with no errors', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
   try {
     await openGame(page);
-    const state = await gameState(page);
-    expect(state.state).toBe('Playing');
-    expect(state.entities.players).toBe(1);
+    const s = await gameState(page);
+    expect(s.state).toBe('Playing');
+    expect(s.entities.players).toBe(1);
+    expect(s.room).toBe('Quarters');
+    expect(s.tool).toBe('Wrench');
+    expect(s.journey.duration).toBe(240);
+    expect(s.journey.remaining).toBeGreaterThan(200);
+    expect(s.faults).toEqual([]);
     await expect(page.locator('#crash-overlay')).toBeHidden();
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'boot: dark arena, player square centered, "SCORE: 0" top-left, no crash overlay');
+    await attachShot(
+      page,
+      testInfo,
+      "boot: engineer's quarters (teal floor), orange engineer on the spine holding the wrench, diagnostic console on the upper wall, bunk lower left, ARRIVAL IN 4:00 top centre, belt [1] WRENCH [2] TAPE 20s bottom",
+    );
   }
 });

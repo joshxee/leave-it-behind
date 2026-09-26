@@ -6,22 +6,28 @@
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
-pub mod audio;
+pub mod alarm;
 pub mod determinism;
+pub mod diagnostics;
 #[cfg(all(feature = "e2e", target_arch = "wasm32"))]
 mod e2e_bridge;
+pub mod faults;
+pub mod level;
+pub mod palette;
 pub mod player;
 pub mod rng;
 pub mod scenarios;
-pub mod scoring;
+pub mod shapes;
+pub mod ship;
 pub mod state;
+pub mod tools;
 pub mod ui;
 pub mod version;
 
 pub use determinism::TestDeterminismPlugin;
 pub use rng::GameRng;
 pub use scenarios::{ActiveScenario, Scenario};
-pub use state::{AppState, GameSet};
+pub use state::{AppState, GameSet, RunEntity, RunSet};
 
 /// Canvas and window size in logical pixels. Also the Playwright viewport.
 pub const WINDOW_SIZE: UVec2 = UVec2::new(1280, 720);
@@ -37,10 +43,15 @@ impl Plugin for GamePlugin {
             .add_plugins((
                 state::StatePlugin,
                 rng::RngPlugin,
+                shapes::ShapesPlugin,
+                ship::ShipPlugin,
                 player::PlayerPlugin,
-                scoring::ScoringPlugin,
+                tools::ToolsPlugin,
+                faults::FaultsPlugin,
+                level::LevelPlugin,
+                diagnostics::DiagnosticsPlugin,
+                alarm::AlarmPlugin,
                 ui::UiPlugin,
-                audio::AudioFxPlugin,
                 scenarios::ScenarioPlugin,
                 version::VersionPlugin,
             ));
