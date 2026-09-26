@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "individual_tiles": 64,
+  "distinct_tiles": 64,
+  "tile_dimensions": [
+    64,
+    64
+  ],
+  "atlas_dimensions": [
+    512,
+    512
+  ],
+  "palette_entries": 16,
+  "opaque_colours_used": 15,
+  "binary_alpha": true,
+  "wall_connection_patterns": 16,
+  "matching_wall_seam_pairs": 240,
+  "cockpit_master_matches_six_tiles": true,
+  "groups": {
+    "floor": 9,
+    "floor_edge": 8,
+    "space": 2,
+    "wall": 16,
+    "breach": 2,
+    "patched_wall": 2,
+    "door": 10,
+    "cockpit": 6,
+    "diagnostic": 3,
+    "prop": 6
+  },
+  "issues": []
+}

@@ -1,0 +1,20 @@
+GIMP Palette
+Name: Derelict Engineer 16 (index 0 transparent)
+Columns: 8
+# Index 0 is transparent in PNG and Aseprite; GPL stores RGB only.
+  0   0   0	Transparent
+ 16  28  41	Outline
+ 27  45  62	Deep seam
+ 44  66  85	Joint shadow
+ 64  92 112	Blue steel shadow
+ 86 119 139	Blue steel
+117 149 165	Plate midtone
+154 179 189	Plate light
+191 208 214	Worn edge
+230 239 241	Specular
+ 18  53  79	Visor deep
+ 28  88 123	Visor blue
+ 51 136 173	Visor midtone
+ 97 187 210	Visor light
+160 224 235	Visor reflection
+129 152 163	Repair fabric

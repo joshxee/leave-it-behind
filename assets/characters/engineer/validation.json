@@ -1,0 +1,232 @@
+{
+  "passed": true,
+  "individual_pngs": 128,
+  "dimensions": [
+    64,
+    64
+  ],
+  "palette_entries": 16,
+  "opaque_colours_used": 15,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "pivot_pixels": [
+    32,
+    38
+  ],
+  "atlas_matches_individual_pngs": true,
+  "aseprite_animation_tags": 72,
+  "groups": {
+    "idle": 16,
+    "walk": 32,
+    "wrench_hold": 16,
+    "wrench_use": 24,
+    "tape_hold": 16,
+    "tape_use": 24
+  },
+  "idle_directions_distinct": 16,
+  "animations": [
+    {
+      "name": "walk_e",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        128,
+        146,
+        156
+      ]
+    },
+    {
+      "name": "walk_se",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        213,
+        219,
+        206
+      ]
+    },
+    {
+      "name": "walk_s",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        215,
+        238,
+        215
+      ]
+    },
+    {
+      "name": "walk_sw",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        206,
+        230,
+        213
+      ]
+    },
+    {
+      "name": "walk_w",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        156,
+        130,
+        128
+      ]
+    },
+    {
+      "name": "walk_nw",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        85,
+        58,
+        56
+      ]
+    },
+    {
+      "name": "walk_n",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        70,
+        68,
+        70
+      ]
+    },
+    {
+      "name": "walk_ne",
+      "distinct_frames": 4,
+      "changed_pixels_between_frames": [
+        56,
+        81,
+        85
+      ]
+    },
+    {
+      "name": "wrench_use_e",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        121,
+        90
+      ]
+    },
+    {
+      "name": "wrench_use_se",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        100,
+        63
+      ]
+    },
+    {
+      "name": "wrench_use_s",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        118,
+        96
+      ]
+    },
+    {
+      "name": "wrench_use_sw",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        103,
+        75
+      ]
+    },
+    {
+      "name": "wrench_use_w",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        119,
+        95
+      ]
+    },
+    {
+      "name": "wrench_use_nw",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        86,
+        57
+      ]
+    },
+    {
+      "name": "wrench_use_n",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        84,
+        67
+      ]
+    },
+    {
+      "name": "wrench_use_ne",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        100,
+        64
+      ]
+    },
+    {
+      "name": "tape_use_e",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        144,
+        200
+      ]
+    },
+    {
+      "name": "tape_use_se",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        207,
+        269
+      ]
+    },
+    {
+      "name": "tape_use_s",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        179,
+        241
+      ]
+    },
+    {
+      "name": "tape_use_sw",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        137,
+        201
+      ]
+    },
+    {
+      "name": "tape_use_w",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        166,
+        171
+      ]
+    },
+    {
+      "name": "tape_use_nw",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        118,
+        116
+      ]
+    },
+    {
+      "name": "tape_use_n",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        105,
+        119
+      ]
+    },
+    {
+      "name": "tape_use_ne",
+      "distinct_frames": 3,
+      "changed_pixels_between_frames": [
+        148,
+        203
+      ]
+    }
+  ],
+  "issues": []
+}
