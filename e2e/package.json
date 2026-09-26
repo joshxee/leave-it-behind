@@ -1,0 +1,16 @@
+{
+  "name": "leave-it-behind-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test --grep-invert @visual",
+    "report": "node build-report.mjs",
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,11 @@
+// Native headless smoke test (bevy_ci_testing, see scripts/smoke-native.sh).
+// Schema: bevy_dev_tools 0.19 CiTestingConfig.
+(
+    setup: (
+        fixed_frame_time: Some(0.016666668),
+    ),
+    events: [
+        (60, NamedScreenshot("smoke")),
+        (90, AppExit),
+    ],
+)

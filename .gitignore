@@ -1,1 +1,11 @@
 /target
+wasm/*.js
+!wasm/restart-audio-context.js
+wasm/*.wasm
+wasm/assets/
+node_modules/
+test-reports/
+e2e/test-results/
+e2e/playwright-report/
+e2e/results.json
+screenshot-*.png
