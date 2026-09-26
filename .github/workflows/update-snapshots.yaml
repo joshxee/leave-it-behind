@@ -1,0 +1,33 @@
+name: Update snapshots
+
+# Regenerates the Linux visual baselines. Download the `snapshots` artifact,
+# review the images, and commit them under e2e/specs/__screenshots__/.
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: scripts/ci/install-web-tools.sh
+      - run: E2E=1 scripts/build-web.sh
+      - name: Update baselines
+        working-directory: e2e
+        run: |
+          npm ci && npx playwright install --with-deps chromium
+          npx playwright test --grep @visual --update-snapshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshots
+          path: e2e/specs/__screenshots__/

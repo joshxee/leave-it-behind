@@ -30,7 +30,7 @@ export function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error' && !IGNORED.some((s) => msg.text().includes(s))) {
-      errors.push(`console: ${msg.text()}`);
+      errors.push(`console: ${msg.text()} (${msg.location().url})`);
     }
   });
   page.on('pageerror', (err) => {

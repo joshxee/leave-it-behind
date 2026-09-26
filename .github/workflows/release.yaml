@@ -1,0 +1,206 @@
+name: Release
+
+# Based on bevyengine/bevy_github_ci_template. Platforms: web, Windows, macOS.
+# The web build goes through scripts/build-web.sh (size budget + leak check)
+# and must pass the @release-smoke Playwright spec before anything is uploaded.
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+env:
+  binary: leave-it-behind
+  add_binaries_to_github_release: true
+  # Needs the BUTLER_CREDENTIALS repository secret (itch.io API key).
+  itch_target: knockbox/leave-it-behind
+  use_git_lfs: false
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: olegtarasov/get-tag@v2.1.2
+        id: get_version
+      - uses: actions/checkout@v4
+        with:
+          lfs: ${{ env.use_git_lfs }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: scripts/ci/install-web-tools.sh
+
+      - name: Build
+        env:
+          GAME_VERSION: ${{ steps.get_version.outputs.tag }}
+        run: scripts/build-web.sh --release
+
+      - name: Release smoke test
+        working-directory: e2e
+        run: |
+          npm ci && npx playwright install --with-deps chromium
+          npx playwright test --grep @release-smoke
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-report
+          path: e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Package as a zip
+        working-directory: ./wasm
+        run: zip --recurse-paths ../${{ env.binary }}.zip . -x '.gitkeep'
+
+      - name: Upload binaries to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ env.binary }}.zip
+          name: wasm
+          retention-days: 1
+
+      - name: Upload binaries to release
+        if: ${{ env.add_binaries_to_github_release == 'true' && startsWith(github.ref, 'refs/tags/') }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.binary }}.zip
+          asset_name: ${{ env.binary }}-wasm-${{ steps.get_version.outputs.tag }}.zip
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: olegtarasov/get-tag@v2.1.2
+        id: get_version
+      - uses: actions/checkout@v4
+        with:
+          lfs: ${{ env.use_git_lfs }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build
+        env:
+          GAME_VERSION: ${{ steps.get_version.outputs.tag }}
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Prepare package
+        run: |
+          mkdir windows
+          cp target/x86_64-pc-windows-msvc/release/${{ env.binary }}.exe windows/
+          cp -r assets windows/
+
+      - name: Package as a zip
+        run: Compress-Archive -Path windows/* -DestinationPath ${{ env.binary }}.zip
+
+      - name: Upload binaries to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ env.binary }}.zip
+          name: windows
+          retention-days: 1
+
+      - name: Upload binaries to release
+        if: ${{ env.add_binaries_to_github_release == 'true' && startsWith(github.ref, 'refs/tags/') }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.binary }}.zip
+          asset_name: ${{ env.binary }}-windows-${{ steps.get_version.outputs.tag }}.zip
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  release-macOS:
+    strategy:
+      matrix:
+        include:
+          - arch: intel
+            target: x86_64-apple-darwin
+            deployment_target: '10.12'
+          - arch: apple-silicon
+            target: aarch64-apple-darwin
+            deployment_target: '11'
+    runs-on: macos-latest
+    steps:
+      - uses: olegtarasov/get-tag@v2.1.2
+        id: get_version
+      - uses: actions/checkout@v4
+        with:
+          lfs: ${{ env.use_git_lfs }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        env:
+          GAME_VERSION: ${{ steps.get_version.outputs.tag }}
+          CFLAGS: -fno-stack-check
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Prepare package
+        run: |
+          mkdir -p ${{ env.binary }}.app/Contents/MacOS
+          cp target/${{ matrix.target }}/release/${{ env.binary }} ${{ env.binary }}.app/Contents/MacOS/
+          cp -r assets ${{ env.binary }}.app/Contents/MacOS/
+          hdiutil create -fs HFS+ -volname "${{ env.binary }}" -srcfolder ${{ env.binary }}.app ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
+
+      - name: Upload binaries to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
+          name: macOS-${{ matrix.arch }}
+          retention-days: 1
+
+      - name: Upload binaries to release
+        if: ${{ env.add_binaries_to_github_release == 'true' && startsWith(github.ref, 'refs/tags/') }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
+          asset_name: ${{ env.binary }}-macOS-${{ matrix.arch }}-${{ steps.get_version.outputs.tag }}.dmg
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  upload-to-itch:
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs:
+      - release-wasm
+      - release-windows
+      - release-macOS
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./builds
+          pattern: '{wasm,windows,macOS-*}'
+
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          ./butler -V
+      - uses: olegtarasov/get-tag@v2.1.2
+        id: get_version
+      - name: Upload to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
+        run: |
+          for channel in $(ls builds); do
+            ./butler push \
+                --fix-permissions \
+                --userversion="${{ steps.get_version.outputs.tag }}" \
+                builds/$channel/* \
+                ${{ env.itch_target }}:$channel
+          done

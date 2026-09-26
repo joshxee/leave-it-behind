@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: fmt, clippy, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo clippy --all-targets --locked --features e2e -- -D warnings
+      - run: cargo test --locked
+
+  smoke-native:
+    name: native render smoke (software GPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Software GPU emulation on hosted runners is not guaranteed; see TESTING.md.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 xvfb mesa-vulkan-drivers libgl1-mesa-dri
+      - run: scripts/smoke-native.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-native
+          path: test-reports/smoke/
+          if-no-files-found: ignore
+
+  web-e2e:
+    name: web build + Playwright e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: scripts/ci/install-web-tools.sh
+      - name: Build (e2e)
+        run: E2E=1 scripts/build-web.sh
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Playwright
+        working-directory: e2e
+        run: npx playwright test --grep-invert "@visual|@release-smoke"
+      - name: Report
+        if: always()
+        run: node e2e/build-report.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/results.json
+            test-reports/e2e/
+          if-no-files-found: ignore
+
+  web-release:
+    name: web player build (budget, leak check, release smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: scripts/ci/install-web-tools.sh
+      - name: Build (release)
+        run: scripts/build-web.sh --release
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Release smoke
+        working-directory: e2e
+        run: npx playwright test --grep @release-smoke
+      - name: Report
+        if: always()
+        run: node e2e/build-report.mjs e2e/results.json test-reports/release-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-smoke-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            test-reports/release-smoke/
+          if-no-files-found: ignore
