@@ -2,10 +2,51 @@
 name = "leave-it-behind"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+publish = false
+build = "build.rs"
+# One integration-test binary (tests/integration/main.rs). Every extra file
+# directly under tests/ would be linked against Bevy separately.
+autotests = false
+
+[lib]
+name = "leave_it_behind"
+path = "src/lib.rs"
+
+[[bin]]
+name = "leave-it-behind"
+path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[features]
+default = []
+# Native local builds only: faster incremental linking. Never enable in CI,
+# release or wasm builds.
+dev = ["bevy/dynamic_linking"]
+# Test bridge, determinism and scenario loading. Off in every player build.
+e2e = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys"]
+# Headless native smoke test driven by ci/smoke.ron (CI_TESTING_CONFIG).
+smoke = ["bevy/bevy_ci_testing"]
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["dynamic_linking"] }
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+bevy = { version = "0.19.1", features = ["wav"] }
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
+rand = { version = "0.10", default-features = false }
+getrandom = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy = { version = "0.19.1", features = ["wav", "web"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Window", "Location", "UrlSearchParams", "console"] }
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
@@ -18,18 +59,12 @@ opt-level = 3
 # Enable more optimization in the release profile at the cost of compile time.
 [profile.release]
 # Compile the entire crate as one unit.
-# Slows compile times, marginal improvements.
 codegen-units = 1
 # Do a second optimization pass over the entire program, including dependencies.
-# Slows compile times, marginal improvements.
 lto = "thin"
 
 # Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
 [profile.wasm-release]
-# Default to release profile values.
 inherits = "release"
-# Optimize with size in mind (also try "z", sometimes it is better).
-# Slightly slows compile times, great improvements to file size and runtime performance.
 opt-level = "s"
-# Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"

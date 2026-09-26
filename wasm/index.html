@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leave It Behind</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    #bevy-canvas { display: block; outline: none; }
+    #crash-overlay {
+      display: none; position: fixed; inset: 0; z-index: 10;
+      align-items: center; justify-content: center; padding: 24px;
+      background: rgba(20, 0, 0, 0.92); color: #fff;
+      font: 18px/1.5 system-ui, sans-serif; text-align: center;
+    }
+    #crash-overlay pre { font-size: 12px; opacity: 0.7; white-space: pre-wrap; max-width: 80ch; }
+  </style>
+</head>
+
+<body>
+  <canvas id="bevy-canvas" tabindex="0"></canvas>
+  <div id="crash-overlay" role="alert">
+    <div>
+      <p>The game crashed. Version <span id="crash-version">unknown</span>. Please report this with a screenshot.</p>
+      <pre id="crash-detail"></pre>
+    </div>
+  </div>
+  <script>window.__gameVersion = "unknown";</script>
+  <script src="version.js"></script>
+  <script>
+    // Shows a visible crash message instead of a blank canvas.
+    window.showCrash = function (detail) {
+      const overlay = document.getElementById("crash-overlay");
+      if (!overlay || overlay.style.display === "flex") return;
+      document.getElementById("crash-version").textContent = window.__gameVersion;
+      document.getElementById("crash-detail").textContent = String(detail || "").slice(0, 2000);
+      overlay.style.display = "flex";
+    };
+    const isControlFlow = (e) => String(e && (e.message || e)).startsWith(
+      "Using exceptions for control flow, don't mind me. This isn't actually an error!");
+    window.addEventListener("error", (e) => {
+      if (!isControlFlow(e.error || e.message)) window.showCrash(e.error ? (e.error.stack || e.error) : e.message);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      if (!isControlFlow(e.reason)) window.showCrash(e.reason && (e.reason.stack || e.reason));
+    });
+  </script>
+  <script type="module">
+    import './restart-audio-context.js'
+    import init from './bevy_game.js'
+
+    init().catch((error) => {
+      if (!isControlFlowError(error)) {
+        window.showCrash(error && (error.stack || error));
+        throw error;
+      }
+    });
+
+    function isControlFlowError(error) {
+      return String(error && error.message).startsWith(
+        "Using exceptions for control flow, don't mind me. This isn't actually an error!");
+    }
+  </script>
+</body>
+
+</html>
