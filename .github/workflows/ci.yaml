@@ -4,125 +4,169 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+  # Reused by release.yaml so a red commit can never ship.
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to test (defaults to the triggering commit)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # github.workflow is the caller's name when reused, so a release never
+  # cancels (or is cancelled by) CI on main.
+  group: ci-${{ github.workflow }}-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  LINUX_DEPS: >-
+    pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
+    libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
 jobs:
-  test:
-    name: fmt, clippy, tests
+  fmt:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Linux dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo clippy --all-targets --locked --features e2e -- -D warnings
-      - run: cargo test --locked
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+      - name: CLAUDE.md stays an index (max 150 lines)
+        run: test "$(wc -l < CLAUDE.md)" -le 150
 
-  smoke-native:
-    name: native render smoke (software GPU)
+  clippy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Software GPU emulation on hosted runners is not guaranteed; see TESTING.md.
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Linux dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 xvfb mesa-vulkan-drivers libgl1-mesa-dri
-      - run: scripts/smoke-native.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: smoke-native
-          path: test-reports/smoke/
-          if-no-files-found: ignore
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_DEPS
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_DEPS
+      - run: cargo test --locked --workspace
 
   web-e2e:
-    name: web build + Playwright e2e
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: e2e/package-lock.json
       - run: scripts/ci/install-web-tools.sh
-      - name: Build (e2e)
-        run: E2E=1 scripts/build-web.sh
+      - run: E2E=1 scripts/build-web.sh
       - name: Install Playwright
         working-directory: e2e
         run: npm ci && npx playwright install --with-deps chromium
       - name: Playwright
         working-directory: e2e
-        run: npx playwright test --grep-invert "@visual|@release-smoke"
-      - name: Report
+        # @visual is skipped until the first Linux baseline is committed (TESTING.md).
+        run: npx playwright test --grep-invert @visual
+      - name: Summary
         if: always()
-        run: node e2e/build-report.mjs
-      - uses: actions/upload-artifact@v4
+        run: node e2e/build-report.mjs || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: e2e-report
           path: |
-            e2e/playwright-report/
-            e2e/test-results/
+            e2e/playwright-report
+            e2e/test-results
             e2e/results.json
-            test-reports/e2e/
           if-no-files-found: ignore
+          retention-days: 7
 
-  web-release:
-    name: web player build (budget, leak check, release smoke)
+  web-budget:
+    name: web player build (size budget + leak check)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: scripts/ci/install-web-tools.sh
+      - run: scripts/build-web.sh --release
+
+  smoke-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Software GPU emulation on hosted runners is not guaranteed (TESTING.md).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_DEPS libxkbcommon-dev xvfb mesa-vulkan-drivers libgl1-mesa-dri
+      - run: scripts/smoke-native.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-native
+          path: test-reports/smoke/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories bans licenses sources
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
-      - run: scripts/ci/install-web-tools.sh
-      - name: Build (release)
-        run: scripts/build-web.sh --release
-      - name: Install Playwright
+      - name: npm audit
         working-directory: e2e
-        run: npm ci && npx playwright install --with-deps chromium
-      - name: Release smoke
-        working-directory: e2e
-        run: npx playwright test --grep @release-smoke
-      - name: Report
-        if: always()
-        run: node e2e/build-report.mjs e2e/results.json test-reports/release-smoke
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: release-smoke-report
-          path: |
-            e2e/playwright-report/
-            e2e/test-results/
-            test-reports/release-smoke/
-          if-no-files-found: ignore
+        run: npm audit --omit=dev --audit-level=high

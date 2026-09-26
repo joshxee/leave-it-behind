@@ -2,6 +2,8 @@
 name = "leave-it-behind"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+publish = false
 build = "build.rs"
 # One integration-test binary (tests/integration/main.rs). Every extra file
 # directly under tests/ would be linked against Bevy separately.
@@ -31,7 +33,7 @@ smoke = ["bevy/bevy_ci_testing"]
 
 [dependencies]
 bevy = { version = "0.19.1", features = ["wav"] }
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
 rand = { version = "0.10", default-features = false }
 getrandom = "0.4"
 
