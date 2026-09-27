@@ -59,6 +59,9 @@ pub const UI_DIM: Color = Color::srgba_u8(191, 208, 214, 140);
 pub const UI_ACCENT: Color = VISOR_LIGHT;
 pub const UI_PANEL: Color = Color::srgba_u8(16, 28, 41, 235);
 pub const UI_TITLE: Color = VISOR_GLINT;
+/// The vitals bars (warm `ALERT` while their fault is active).
+pub const GAUGE_TRACK: Color = DEEP_SEAM;
+pub const GAUGE_FILL: Color = VISOR_MID;
 pub const MAP_HULL: Color = JOINT_SHADOW;
 pub const MAP_ROOM: Color = STEEL_SHADOW;
 pub const MAP_PLAYER: Color = VISOR_GLINT;
@@ -101,6 +104,8 @@ mod tests {
             UI_PANEL,
             UI_ROW,
             UI_ROW_FOCUS,
+            GAUGE_TRACK,
+            GAUGE_FILL,
         ];
         for c in decorative {
             assert!(cold(c), "{c:?} is not a cold colour");

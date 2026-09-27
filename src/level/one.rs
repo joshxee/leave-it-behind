@@ -7,6 +7,10 @@
 //! - 1:36-2:40, pairs: two faults at once, the second pair at opposite ends
 //!   of the ship (helm and airlock).
 //! - 2:56-3:06, final approach: all three kinds at once, spread tip to tail.
+//!
+//! Breach and bolt clocks are drains on the ship's oxygen and engine heat
+//! (`faults::vitals`): each alone plays exactly as its clock, but one left
+//! long drains the pool for the next of its kind.
 
 use super::def::{Envelope, FaultSlot, LevelDef};
 use crate::faults::Site;

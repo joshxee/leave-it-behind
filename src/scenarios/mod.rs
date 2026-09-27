@@ -17,7 +17,7 @@ use bevy::prelude::*;
 
 use crate::art::engineer::{contact, facing};
 use crate::coach::{Tip, TipsSeen};
-use crate::faults::{Fault, Site, fault_bundle};
+use crate::faults::{Site, Vitals, fault_bundle};
 use crate::level::{FaultPlan, Journey};
 use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
@@ -46,8 +46,11 @@ pub enum Scenario {
     Scramble,
     /// Level one with three seconds to arrival and nothing broken.
     Landing,
-    /// The `breach` scenario with two seconds left on the breach's clock.
+    /// The `breach` scenario with two seconds of oxygen left.
     BreachCritical,
+    /// The `breach` scenario with the air still at 40% from an earlier one:
+    /// the new breach empties it in 40% of its clock.
+    SecondBreach,
     /// The `breach` scenario with one second of tape left.
     TapeLow,
     /// Level one from launch, paused: the pause menu is open.
@@ -74,6 +77,7 @@ impl Scenario {
         Scenario::Scramble,
         Scenario::Landing,
         Scenario::BreachCritical,
+        Scenario::SecondBreach,
         Scenario::TapeLow,
         Scenario::Paused,
         Scenario::Settings,
@@ -92,6 +96,7 @@ impl Scenario {
             Scenario::Scramble => "scramble",
             Scenario::Landing => "landing",
             Scenario::BreachCritical => "breach_critical",
+            Scenario::SecondBreach => "second_breach",
             Scenario::TapeLow => "tape_low",
             Scenario::Paused => "paused",
             Scenario::Settings => "settings",
@@ -122,6 +127,7 @@ impl Scenario {
             Scenario::Scramble => scramble(world),
             Scenario::Landing => landing(world),
             Scenario::BreachCritical => breach_critical(world),
+            Scenario::SecondBreach => second_breach(world),
             Scenario::TapeLow => tape_low(world),
             Scenario::Paused => paused(world),
             Scenario::Settings => settings(world),
@@ -190,9 +196,12 @@ fn bolts(world: &mut World) {
     hold(world, Tool::Wrench);
 }
 
+/// The `breach` scenario's clock: a full tank lasts this long.
+pub const BREACH_CLOCK: f32 = 50.0;
+
 fn breach(world: &mut World) {
     quiet(world);
-    start(world, Site::AirlockPortAft, 50.0);
+    start(world, Site::AirlockPortAft, BREACH_CLOCK);
     place_player(world, breach_stand(), -Site::AirlockPortAft.normal());
     hold(world, Tool::Tape);
 }
@@ -225,10 +234,12 @@ fn landing(world: &mut World) {
 
 fn breach_critical(world: &mut World) {
     breach(world);
-    let mut q = world.query::<&mut Fault>();
-    for mut fault in q.iter_mut(world) {
-        fault.elapsed = fault.clock - 2.0;
-    }
+    world.resource_mut::<Vitals>().oxygen.spent = 1.0 - 2.0 / BREACH_CLOCK;
+}
+
+fn second_breach(world: &mut World) {
+    breach(world);
+    world.resource_mut::<Vitals>().oxygen.spent = 0.6;
 }
 
 fn tape_low(world: &mut World) {

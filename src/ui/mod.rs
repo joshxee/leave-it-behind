@@ -1,4 +1,5 @@
 //! HUD: the countdown to arrival (top), the current room (top left), the
+//! ship's vitals (top right: oxygen, engine heat, time to impact), the
 //! tool belt and a context prompt (bottom), and a controls hint at launch.
 //! Shown during a flight and behind the end screen, hidden on the menus.
 //! It never shows where a fault is: that is the diagnostic screen's job.
@@ -6,6 +7,8 @@
 //!
 //! Uses the bundled Super Indie font when an `AssetServer` exists; headless
 //! tests fall back to the default font.
+
+mod vitals;
 
 use std::collections::VecDeque;
 
@@ -19,6 +22,8 @@ use crate::settings::Settings;
 use crate::ship::CurrentRoom;
 use crate::tools::{Tool, ToolBelt, ToolState};
 use crate::{AppState, GameSet, palette};
+
+pub use vitals::{Gauge, GaugeFill, GaugeLabel, GaugeReading, GaugeValue, gauge};
 
 pub const FONT_PATH: &str = "fonts/super-indie-font/SuperIndie-GOp7O.ttf";
 /// The controls hint shows for this long after launch.
@@ -95,11 +100,18 @@ impl Plugin for UiPlugin {
         app.init_resource::<Notices>()
             .add_systems(
                 Startup,
-                (spawn_hud, spawn_notice_line).in_set(GameSet::Input),
+                (spawn_hud, vitals::spawn_vitals, spawn_notice_line).in_set(GameSet::Input),
             )
             .add_systems(
                 Update,
-                (show_hud, update_hud, update_prompt, show_notices).in_set(GameSet::Present),
+                (
+                    show_hud,
+                    update_hud,
+                    vitals::update_vitals,
+                    update_prompt,
+                    show_notices,
+                )
+                    .in_set(GameSet::Present),
             );
     }
 }
