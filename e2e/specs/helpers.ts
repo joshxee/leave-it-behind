@@ -42,6 +42,8 @@ export type BevyState = {
     shake: number;
     flash: number;
     controlsHint: boolean;
+    /** On while any coaching tip is still to come. */
+    tips: boolean;
     pauseUnfocused: boolean;
     fullscreen: boolean;
     vsync: boolean;
@@ -76,7 +78,12 @@ export type BevyState = {
   /** Where tape goes on this tick: the wall point and its face's normal (out of the wall), or null. */
   tapeContact: { x: number; y: number; nx: number; ny: number } | null;
   strips: number;
-  journey: { elapsed: number; remaining: number; duration: number };
+  /** `launched` is false while level one's pre-flight check holds the countdown. */
+  journey: { elapsed: number; remaining: number; duration: number; launched: boolean };
+  /** The coaching panel's lines, top to bottom (empty when hidden). */
+  coach: { active: boolean; lines: string[] };
+  /** Where the diagnostic console is worked from (its front edge). */
+  console: { x: number; y: number };
   faults: FaultState[];
   looseBolts: { x: number; y: number }[];
   /** Sliding doors: `frame` 0 (closed) to 3 (open, the only passable frame). */
@@ -194,6 +201,42 @@ export async function clickRow(page: Page, label: string) {
   await page.mouse.move(row.x!, row.y!);
   await page.mouse.down();
   await page.mouse.up();
+}
+
+/**
+ * Turns every loose bolt on the panel the engineer stands at (wrench in
+ * hand), walking along the panel from bolt to bolt as a player does.
+ * `afterClick(i)` runs as the `i`th bolt starts turning.
+ */
+export async function turnLooseBolts(page: Page, afterClick?: (i: number) => Promise<void>) {
+  const start = await waitForState(page, (s) => s.looseBolts.length > 0 && s.snap);
+  // The panel runs along the engine's side: walk along it from bolt to bolt.
+  const first = start.looseBolts[0];
+  const last = start.looseBolts[start.looseBolts.length - 1];
+  const vertical = Math.abs(last.y - first.y) > Math.abs(last.x - first.x);
+  const along = (p: { x: number; y: number }) => (vertical ? p.y : p.x);
+  const bolts = [...start.looseBolts].sort((a, b) => along(a) - along(b));
+  for (const [i, bolt] of bolts.entries()) {
+    const s = await gameState(page);
+    if (Math.abs(along(bolt) - along(s.player)) > 4) {
+      const ahead = along(bolt) > along(s.player);
+      const key = vertical ? (ahead ? 'w' : 's') : ahead ? 'd' : 'a';
+      await page.keyboard.down(key);
+      await waitForState(
+        page,
+        (t, a) => Math.abs(a.target - (a.vertical ? t.player.y : t.player.x)) <= 20,
+        { target: along(bolt), vertical },
+      );
+      await page.keyboard.up(key);
+      await waitForState(page, (t) => !t.player.walking);
+    }
+    await aimAt(page, bolt);
+    const aimed = await waitForState(page, (t) => t.snap);
+    const at = toScreen(aimed, bolt);
+    await page.mouse.click(at.x, at.y);
+    await afterClick?.(i);
+    await waitForState(page, (t, n) => t.looseBolts.length === n, bolts.length - i - 1);
+  }
 }
 
 /** Advances exactly `n` fixed ticks (requires `?freeze=1`). */

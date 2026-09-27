@@ -1,9 +1,11 @@
 //! What the player can change in the settings screen, and applying it.
 //! Loaded and saved by `save`; read by the alarm, the nav display, the
-//! diagnostic map, the HUD and the pause logic.
+//! diagnostic map, the HUD, the coaching and the pause logic.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use crate::coach::TipsSeen;
 
 /// Percentages move in steps of this much.
 pub const PERCENT_STEP: u8 = 25;
@@ -18,6 +20,10 @@ pub struct Settings {
     pub flash: u8,
     /// Show the controls hint at the start of a flight.
     pub controls_hint: bool,
+    /// Coaching tips already shown (`coach`). The TIPS setting reads ON
+    /// while any is still to come: switching it on brings them all back,
+    /// switching it off counts them all as seen.
+    pub tips_seen: TipsSeen,
     /// Pause when the game window loses focus.
     pub pause_unfocused: bool,
     /// Desktop only: borderless fullscreen.
@@ -32,6 +38,7 @@ impl Default for Settings {
             shake: 100,
             flash: 100,
             controls_hint: true,
+            tips_seen: TipsSeen::default(),
             pause_unfocused: true,
             fullscreen: false,
             vsync: true,
@@ -45,16 +52,18 @@ pub enum SettingKey {
     Shake,
     Flash,
     ControlsHint,
+    Tips,
     PauseUnfocused,
     Fullscreen,
     Vsync,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 6] = [
+    pub const ALL: [SettingKey; 7] = [
         SettingKey::Shake,
         SettingKey::Flash,
         SettingKey::ControlsHint,
+        SettingKey::Tips,
         SettingKey::PauseUnfocused,
         SettingKey::Fullscreen,
         SettingKey::Vsync,
@@ -65,6 +74,7 @@ impl SettingKey {
             SettingKey::Shake => "SCREEN SHAKE",
             SettingKey::Flash => "ALARM FLASHING",
             SettingKey::ControlsHint => "CONTROLS HINT",
+            SettingKey::Tips => "TIPS",
             SettingKey::PauseUnfocused => "PAUSE WHEN UNFOCUSED",
             SettingKey::Fullscreen => "FULLSCREEN",
             SettingKey::Vsync => "VSYNC",
@@ -85,6 +95,11 @@ impl Settings {
 
     pub fn flash_scale(&self) -> f32 {
         f32::from(self.flash.min(100)) / 100.0
+    }
+
+    /// The TIPS setting: on while any coaching tip is still to come.
+    pub fn tips_on(&self) -> bool {
+        !self.tips_seen.all()
     }
 
     /// Moves a setting one step down (`up == false`) or up. Percentages stop
@@ -123,6 +138,14 @@ impl Settings {
     fn toggle(&mut self, key: SettingKey) {
         let flag = match key {
             SettingKey::ControlsHint => &mut self.controls_hint,
+            SettingKey::Tips => {
+                self.tips_seen = if self.tips_on() {
+                    TipsSeen::EVERY
+                } else {
+                    TipsSeen::default()
+                };
+                return;
+            }
             SettingKey::PauseUnfocused => &mut self.pause_unfocused,
             SettingKey::Fullscreen => &mut self.fullscreen,
             SettingKey::Vsync => &mut self.vsync,
@@ -138,6 +161,7 @@ impl Settings {
             SettingKey::Shake => format!("{}%", self.shake),
             SettingKey::Flash => format!("{}%", self.flash),
             SettingKey::ControlsHint => on_off(self.controls_hint),
+            SettingKey::Tips => on_off(self.tips_on()),
             SettingKey::PauseUnfocused => on_off(self.pause_unfocused),
             SettingKey::Fullscreen => on_off(self.fullscreen),
             SettingKey::Vsync => on_off(self.vsync),
@@ -216,6 +240,23 @@ mod tests {
         s.step(SettingKey::ControlsHint, true);
         assert!(s.controls_hint);
         assert_eq!(s.value_label(SettingKey::ControlsHint), "ON");
+    }
+
+    #[test]
+    fn tips_stay_on_until_every_tip_is_seen() {
+        use crate::coach::Tip;
+        let mut s = Settings::default();
+        assert!(s.tips_on());
+        s.tips_seen.mark(Tip::Preflight);
+        s.tips_seen.mark(Tip::LooseBolts);
+        assert!(s.tips_on(), "two tips are still to come");
+        // Off counts every tip as seen; on brings them all back.
+        s.cycle(SettingKey::Tips);
+        assert_eq!(s.tips_seen, TipsSeen::EVERY);
+        assert_eq!(s.value_label(SettingKey::Tips), "OFF");
+        s.step(SettingKey::Tips, false);
+        assert_eq!(s.tips_seen, TipsSeen::default());
+        assert_eq!(s.value_label(SettingKey::Tips), "ON");
     }
 
     #[test]

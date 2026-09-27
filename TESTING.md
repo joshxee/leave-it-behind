@@ -108,8 +108,11 @@ exist). The same scenario is used by native tests (`test_app_with`), the web
 build (`?scenario=<name>`), native e2e runs (`SCENARIO=<name> cargo run --features e2e`),
 and `node e2e/tools/capture.mjs --scenario <name>`. Current ones: `default`, `quiet`,
 `bolts`, `breach`, `drift`, `diagnostics`, `scramble`, `landing`, `breach_critical`,
-`tape_low`, `paused`, `settings` (see `src/scenarios/README.md`). Any scenario skips the title
-screen; without one the game boots to the title, as players see it.
+`tape_low`, `paused`, `settings`, `first_flight`, `first_bolts` (see `src/scenarios/README.md`).
+Any scenario skips the title screen; without one the game boots to the title, as players see it.
+Scenarios also skip level one's coaching, except `first_flight` and `first_bolts`. A flight
+started from the title with fresh saves (native `test_app()`, or any e2e test, which gets a fresh
+`localStorage`) is a first flight: it waits for the pre-flight check (`src/coach/README.md`).
 
 Template:
 
@@ -160,7 +163,8 @@ progress, lastRun, notice, tick, room, camera, player (position, facing,
 locked, walking, animation `pose` and facing `dir`), focus, tool, tape (and
 the wall point and normal it is going on), faults (kind, site, room,
 remaining, repair, position), loose bolts, doors (position,
-frame, open), nav marker, diagnostics view, alarm, run stats (with damage). The
+frame, open), nav marker, diagnostics view, console position, alarm, run stats (with damage),
+journey (with `launched`), coaching panel lines. The
 full shape is `BevyState` in `e2e/specs/helpers.ts`. Saves use the page's real
 `localStorage` (each test gets a fresh browser context), so a `page.reload()`
 checks what was saved. With `?freeze=1`,

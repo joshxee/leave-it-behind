@@ -7,6 +7,8 @@
 //! A scenario is applied on top of every fresh run (launch and each restart),
 //! after the run's player, tools and fault plan exist. Any scenario skips the
 //! title screen; the plain boot (no scenario) is the title and menu situation.
+//! Scenarios skip level one's coaching too, except the ones made for it
+//! ([`Scenario::coached`]).
 //!
 //! Adding one: add a variant, give it a name in [`Scenario::name`], add it to
 //! [`Scenario::ALL`], and write its setup function below.
@@ -14,17 +16,19 @@
 use bevy::prelude::*;
 
 use crate::art::engineer::{contact, facing};
+use crate::coach::{Tip, TipsSeen};
 use crate::faults::{Fault, Site, fault_bundle};
 use crate::level::{FaultPlan, Journey};
 use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
+use crate::settings::Settings;
 use crate::ship::layout;
 use crate::tools::{Tool, ToolBelt};
 use crate::{AppState, Pause, RunSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scenario {
-    /// Level one from launch, as a player gets it.
+    /// Level one from launch, as a returning player gets it (no coaching).
     Default,
     /// No faults will ever start: free movement and tool use.
     Quiet,
@@ -50,6 +54,13 @@ pub enum Scenario {
     Paused,
     /// Level one, paused, with the settings screen open over the pause menu.
     Settings,
+    /// Level one as a first-time player gets it: every coaching tip still
+    /// to come, so the launch waits for the pre-flight check at the console.
+    FirstFlight,
+    /// A first-time player's first fault: the pre-flight check done, loose
+    /// bolts on the port engine with their tip up, the engineer in front of
+    /// them with the wrench (as in `bolts`).
+    FirstBolts,
 }
 
 impl Scenario {
@@ -66,6 +77,8 @@ impl Scenario {
         Scenario::TapeLow,
         Scenario::Paused,
         Scenario::Settings,
+        Scenario::FirstFlight,
+        Scenario::FirstBolts,
     ];
 
     pub fn name(self) -> &'static str {
@@ -82,7 +95,15 @@ impl Scenario {
             Scenario::TapeLow => "tape_low",
             Scenario::Paused => "paused",
             Scenario::Settings => "settings",
+            Scenario::FirstFlight => "first_flight",
+            Scenario::FirstBolts => "first_bolts",
         }
+    }
+
+    /// Whether the flight coaches as a player's would. Only the scenarios
+    /// made for the coaching do; the rest play as a returning player.
+    pub fn coached(self) -> bool {
+        matches!(self, Scenario::FirstFlight | Scenario::FirstBolts)
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -104,6 +125,8 @@ impl Scenario {
             Scenario::TapeLow => tape_low(world),
             Scenario::Paused => paused(world),
             Scenario::Settings => settings(world),
+            Scenario::FirstFlight => first_flight(world),
+            Scenario::FirstBolts => first_bolts(world),
         }
     }
 }
@@ -224,6 +247,21 @@ fn settings(world: &mut World) {
     paused(world);
 }
 
+fn tips_seen(world: &mut World, seen: TipsSeen) {
+    world.resource_mut::<Settings>().tips_seen = seen;
+}
+
+fn first_flight(world: &mut World) {
+    tips_seen(world, TipsSeen::default());
+}
+
+fn first_bolts(world: &mut World) {
+    bolts(world);
+    let mut seen = TipsSeen::default();
+    seen.mark(Tip::Preflight);
+    tips_seen(world, seen);
+}
+
 /// Scenario to apply to every run. Insert before the first `app.update()`.
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct ActiveScenario(pub Scenario);
@@ -243,7 +281,7 @@ impl Plugin for ScenarioPlugin {
     }
 }
 
-fn apply_active_scenario(world: &mut World) {
+pub fn apply_active_scenario(world: &mut World) {
     if let Some(ActiveScenario(scenario)) = world.get_resource::<ActiveScenario>().copied() {
         info!("applying scenario {}", scenario.name());
         scenario.apply(world);

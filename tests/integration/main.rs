@@ -2,6 +2,7 @@
 //! add a new top-level file under `tests/` (each one links Bevy again).
 
 mod alarm;
+mod coach;
 mod common;
 mod diagnostics;
 mod doors;

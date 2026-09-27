@@ -112,6 +112,9 @@ pub struct LevelDef {
     pub seed: Option<u64>,
     pub envelope: Envelope,
     pub slots: Vec<FaultSlot>,
+    /// First-time players are coached through it: a pre-flight check at
+    /// the diagnostic screen, then a tip for each kind's first fault (`coach`).
+    pub coaching: bool,
 }
 
 /// One fault a rolled level will start.
@@ -278,6 +281,7 @@ mod tests {
                     clock: TimeWindow::new(60.0, 65.0),
                 },
             ],
+            coaching: false,
         }
     }
 

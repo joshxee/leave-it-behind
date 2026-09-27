@@ -42,6 +42,7 @@ test('settings are saved and survive a page reload', async ({ page }, testInfo) 
       'SCREEN SHAKE 100%',
       'ALARM FLASHING 100%',
       'CONTROLS HINT ON',
+      'TIPS ON',
       'PAUSE WHEN UNFOCUSED ON',
       'RESET SETTINGS',
       'RESET PROGRESS',
@@ -52,7 +53,7 @@ test('settings are saved and survive a page reload', async ({ page }, testInfo) 
     for (const flash of [75, 50, 25, 0]) {
       await press(page, 'ArrowLeft', (s, f) => s.settings.flash === f, flash);
     }
-    await attachShot(page, testInfo, 'settings: SETTINGS title, SCREEN SHAKE < 75% >, ALARM FLASHING < 0% > highlighted, CONTROLS HINT ON, PAUSE WHEN UNFOCUSED ON, RESET SETTINGS, RESET PROGRESS, BACK');
+    await attachShot(page, testInfo, 'settings: SETTINGS title, SCREEN SHAKE < 75% >, ALARM FLASHING < 0% > highlighted, CONTROLS HINT ON, TIPS ON, PAUSE WHEN UNFOCUSED ON, RESET SETTINGS, RESET PROGRESS, BACK');
 
     const stored = await page.evaluate(() => localStorage.getItem('leave-it-behind/settings'));
     expect(stored).toContain('shake: 75');
@@ -85,7 +86,7 @@ test('the mouse highlights and clicks menu rows', async ({ page }, testInfo) => 
     await waitForState(page, (s) => s.state === 'Playing' && s.entities.players === 1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen');
+    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen, the pre-flight check panel under ARRIVAL IN 4:30');
   }
 });
 

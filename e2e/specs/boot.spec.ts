@@ -30,6 +30,8 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     expect(s.doors.every((d) => d.frame === 0)).toBe(true);
     expect(s.journey.duration).toBe(270);
     expect(s.journey.remaining).toBeGreaterThan(200);
+    // A first-time player's flight waits for the pre-flight check (coach.spec.ts).
+    expect(s.journey.launched).toBe(false);
     expect(s.faults).toEqual([]);
     await expect(page.locator('#crash-overlay')).toBeHidden();
     expect(errors).toEqual([]);
@@ -37,7 +39,7 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     await attachShot(
       page,
       testInfo,
-      "boot: tiled quarters, closed doors top and bottom centre, engineer holding the wrench, dark diagnostic screen top left, lockers top right, bunk bottom left, ARRIVAL IN 4:30, belt [1] WRENCH [2] TAPE 20s",
+      "boot: tiled quarters, closed doors top and bottom centre, engineer holding the wrench, dark diagnostic screen top left, lockers top right, bunk bottom left, ARRIVAL IN 4:30 with the pre-flight check panel under it, belt [1] WRENCH [2] TAPE 20s",
     );
   }
 });

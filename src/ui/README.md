@@ -8,6 +8,7 @@ HUD in the bundled Super Indie font (default font without an `AssetServer`, as i
 - Shown during a flight and behind the end screen; hidden on the title and menus (`Hud`, `show_hud`). The end screen itself is a `menu` screen.
 - The notice line (`Notices::push`): one short message at a time for `NOTICE_SECS`, above everything (`GlobalZIndex(60)`), timed in real time so it clears while paused. Used by `save` and `menu`.
 - Never shows where a fault is (that is `diagnostics`).
+- The coaching panel under the countdown (level one's first flight) belongs to `coach`.
 - **Components:** `Hud`, `TimerText`, `RoomText`, `PromptText`, `BeltSlot`, `NoticeText`.
 - **Resources:** `Notices` (`push`, `current`, `tick`).
 - **Systems:** `spawn_hud`, `spawn_notice_line` (Startup), `show_hud`, `update_hud`, `update_prompt`, `show_notices` (Update/Present).
