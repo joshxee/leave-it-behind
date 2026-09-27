@@ -17,10 +17,15 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::{DiagView, Diagnostics};
-use crate::faults::{Fault, FaultFixed, FaultKind, resolve_faults};
+use crate::faults::bolts::Bolt;
+use crate::faults::{Fault, FaultFixed, FaultKind, Site, resolve_faults};
 use crate::level::{CurrentLevel, Journey};
+use crate::player::{InteractKind, InteractPressed};
 use crate::scenarios::apply_active_scenario;
 use crate::settings::Settings;
+use crate::shapes::Shapes;
+use crate::ship::layout;
+use crate::tools::{TapeLaid, ToolState, WrenchTightened};
 use crate::ui::game_font;
 use crate::{ActiveScenario, AppState, GameSet, RunSet, palette, running};
 
@@ -197,7 +202,14 @@ impl Plugin for CoachPlugin {
                     .run_if(running),
             )
             .add_systems(OnExit(AppState::Playing), finish_coaching)
-            .add_systems(Update, draw_panel.in_set(GameSet::Present));
+            .add_systems(Startup, spawn_pings.in_set(GameSet::Input))
+            .add_systems(
+                FixedUpdate,
+                note_ping_interactions
+                    .in_set(GameSet::Resolve)
+                    .after(resolve_faults),
+            )
+            .add_systems(Update, (draw_panel, draw_pings).in_set(GameSet::Present));
     }
 }
 
@@ -305,6 +317,104 @@ fn spawn_panel(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
             )],
         )],
     ));
+}
+
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+enum CoachPing {
+    Diagnostic,
+    Bolt,
+    Breach,
+    Chair,
+}
+
+fn spawn_pings(mut commands: Commands, shapes: Res<Shapes>) {
+    let bolt = Site::PortEngineInner.bolts().expect("first bolt target")[0];
+    for (kind, pos) in [
+        (
+            CoachPing::Diagnostic,
+            layout::ship().center(layout::ship().console_cell()),
+        ),
+        (CoachPing::Bolt, bolt),
+        (CoachPing::Breach, Site::AirlockPortAft.pos()),
+        (CoachPing::Chair, layout::helm_seat()),
+    ] {
+        commands.spawn((
+            kind,
+            shapes.ring(24.0, Color::srgb_u8(45, 155, 255)),
+            Transform::from_translation(pos.extend(8.0)),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+fn note_ping_interactions(
+    mut presses: MessageReader<InteractPressed>,
+    mut tightened: MessageReader<WrenchTightened>,
+    mut tape: MessageReader<TapeLaid>,
+    bolts: Query<&Bolt>,
+    tools: Res<ToolState>,
+    mut settings: ResMut<Settings>,
+) {
+    for press in presses.read() {
+        match press.target {
+            Some(InteractKind::Diagnostics) => settings.pings_seen.diagnostic = true,
+            Some(InteractKind::Helm) => settings.pings_seen.cockpit_chair = true,
+            None => {}
+        }
+    }
+    for msg in tightened.read() {
+        if bolts.get(msg.target).is_ok_and(|bolt| {
+            bolt.panel == Site::PortEngineInner
+                && bolt.pos == Site::PortEngineInner.bolts().unwrap()[0]
+        }) {
+            settings.pings_seen.first_bolt = true;
+        }
+    }
+    if let Some(turn) = tools.turn
+        && bolts.get(turn.target).is_ok_and(|bolt| {
+            bolt.panel == Site::PortEngineInner
+                && bolt.pos == Site::PortEngineInner.bolts().unwrap()[0]
+        })
+    {
+        settings.pings_seen.first_bolt = true;
+    }
+    for msg in tape.read() {
+        if msg.point.distance(Site::AirlockPortAft.pos()) <= crate::faults::breach::BREACH_RADIUS {
+            settings.pings_seen.first_breach = true;
+        }
+    }
+}
+
+fn draw_pings(
+    time: Res<Time>,
+    coach: Res<Coach>,
+    journey: Res<Journey>,
+    settings: Res<Settings>,
+    faults: Query<&Fault>,
+    mut pings: Query<(&CoachPing, &mut Visibility, &mut Transform)>,
+) {
+    let has = |site: Site| {
+        faults
+            .iter()
+            .any(|fault| fault.site == site && !fault.is_repaired())
+    };
+    let t = time.elapsed_secs();
+    for (ping, mut visibility, mut transform) in &mut pings {
+        let show = coach.active
+            && match ping {
+                CoachPing::Diagnostic => !journey.launched && !settings.pings_seen.diagnostic,
+                CoachPing::Bolt => has(Site::PortEngineInner) && !settings.pings_seen.first_bolt,
+                CoachPing::Breach => has(Site::AirlockPortAft) && !settings.pings_seen.first_breach,
+                CoachPing::Chair => has(Site::Helm) && !settings.pings_seen.cockpit_chair,
+            };
+        visibility.set_if_neq(if show {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+        let pulse = (t * 3.5).sin() * 0.12;
+        transform.scale = Vec3::splat(1.0 + pulse);
+    }
 }
 
 /// Shown during a flight only; the end screen and the menus hide it.

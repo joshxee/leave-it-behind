@@ -7,6 +7,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::coach::TipsSeen;
 
+/// Coaching markers already acknowledged by interacting with their target.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PingsSeen {
+    pub diagnostic: bool,
+    pub first_bolt: bool,
+    pub first_breach: bool,
+    pub cockpit_chair: bool,
+}
+
+impl PingsSeen {
+    pub const EVERY: Self = Self {
+        diagnostic: true,
+        first_bolt: true,
+        first_breach: true,
+        cockpit_chair: true,
+    };
+    pub fn all(self) -> bool {
+        self.diagnostic && self.first_bolt && self.first_breach && self.cockpit_chair
+    }
+}
+
 /// Percentages move in steps of this much.
 pub const PERCENT_STEP: u8 = 25;
 
@@ -24,6 +46,8 @@ pub struct Settings {
     /// while any is still to come: switching it on brings them all back,
     /// switching it off counts them all as seen.
     pub tips_seen: TipsSeen,
+    /// Blue target markers acknowledged in the first coaching flight.
+    pub pings_seen: PingsSeen,
     /// Pause when the game window loses focus.
     pub pause_unfocused: bool,
     /// Desktop only: borderless fullscreen.
@@ -39,6 +63,7 @@ impl Default for Settings {
             flash: 100,
             controls_hint: true,
             tips_seen: TipsSeen::default(),
+            pings_seen: PingsSeen::default(),
             pause_unfocused: true,
             fullscreen: false,
             vsync: true,
@@ -139,10 +164,16 @@ impl Settings {
         let flag = match key {
             SettingKey::ControlsHint => &mut self.controls_hint,
             SettingKey::Tips => {
-                self.tips_seen = if self.tips_on() {
+                let showing = self.tips_on();
+                self.tips_seen = if showing {
                     TipsSeen::EVERY
                 } else {
                     TipsSeen::default()
+                };
+                self.pings_seen = if showing {
+                    PingsSeen::EVERY
+                } else {
+                    PingsSeen::default()
                 };
                 return;
             }
