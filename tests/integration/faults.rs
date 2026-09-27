@@ -1,12 +1,14 @@
 use bevy::prelude::*;
-use leave_it_behind::faults::drift::{HOLD_SECS, Nav};
+use leave_it_behind::faults::drift::{HELM_RANGE, HOLD_SECS, Nav, in_band};
 use leave_it_behind::faults::{Fault, FaultKind, Site};
 use leave_it_behind::level::RunStats;
 use leave_it_behind::player::{Locked, Player};
+use leave_it_behind::ship::layout;
 use leave_it_behind::{AppState, Scenario};
 
 use crate::common::{
-    frame, press, release, run_frames, run_until, secs, state, tap, test_app_with,
+    frame, player_pos, press, put_player, release, run_frames, run_until, secs, state, tap,
+    test_app_with,
 };
 
 fn faults(app: &mut App) -> Vec<Fault> {
@@ -87,6 +89,27 @@ fn steering_into_the_band_and_holding_fixes_the_course() {
         "a fix releases the helm"
     );
     assert!(!player_locked(&mut app));
+}
+
+#[test]
+fn a_drift_left_alone_is_never_repaired() {
+    let mut app = test_app_with(Scenario::Drift);
+    put_player(&mut app, layout::player_spawn());
+    assert!(player_pos(&mut app).distance(layout::joystick()) > HELM_RANGE);
+    let clock = faults(&mut app)[0].clock;
+    // The drift curves back through the centre band by itself, but only
+    // holding it there from the helm counts toward the fix.
+    let mut wandered_in = false;
+    run_until(&mut app, secs(clock + 1.0), |app| {
+        wandered_in |= in_band(app.world().resource::<Nav>().marker);
+        for f in faults(app) {
+            assert_eq!(f.repair, 0.0, "nobody at the helm: {f:?}");
+        }
+        state(app) == AppState::Lost
+    });
+    assert!(wandered_in, "the marker never wandered into the band");
+    let stats = app.world().resource::<RunStats>();
+    assert_eq!((stats.fixed, stats.failure), (0, Some(Site::Helm)));
 }
 
 #[test]

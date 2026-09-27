@@ -112,13 +112,13 @@ fn an_engineer_who_fixes_everything_within_twenty_seconds_lands() {
         (stats.started, stats.fixed, stats.failure),
         (slots, slots, None)
     );
-    // The 4 breaches and 3 loose panels each ran their 20 s. A drift can
-    // wander back into the centre band and settle sooner, so its 3 ran at
-    // most 20 s each.
+    // Each fault ran its 20 s: 4 breaches, 3 drifts and 3 loose panels.
     let d = stats.damage;
     let near = |value: f32, expected: f32| (value - expected).abs() < 1.0;
-    assert!(near(d.oxygen, 80.0) && near(d.engine, 60.0), "{d:?}");
-    assert!(d.course > 0.0 && d.course < 60.5, "{d:?}");
+    assert!(
+        near(d.oxygen, 80.0) && near(d.course, 60.0) && near(d.engine, 60.0),
+        "{d:?}"
+    );
 }
 
 #[test]
