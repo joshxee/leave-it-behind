@@ -156,7 +156,14 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
                 PromptText,
                 Text::new(""),
                 font(20.0),
-                TextColor(palette::UI_ACCENT)
+                TextColor(palette::UI_ACCENT),
+                // Readable over the room's bottom wall.
+                Node {
+                    padding: UiRect::axes(px(10), px(2)),
+                    ..default()
+                },
+                BackgroundColor(palette::UI_PANEL.with_alpha(0.8)),
+                Visibility::Hidden,
             ),
             (
                 Node {
@@ -283,7 +290,7 @@ fn update_prompt(
     belt: Res<ToolBelt>,
     tools: Res<ToolState>,
     state: Res<State<AppState>>,
-    mut prompts: Query<&mut Text, With<PromptText>>,
+    mut prompts: Query<(&mut Text, &mut Visibility), With<PromptText>>,
 ) {
     let text = if *state.get() == AppState::Playing {
         prompt(&PromptInputs {
@@ -297,9 +304,17 @@ fn update_prompt(
     } else {
         ""
     };
-    for mut t in &mut prompts {
+    for (mut t, mut visibility) in &mut prompts {
         if t.0 != text {
             t.0 = text.to_string();
+        }
+        let want = if text.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        if *visibility != want {
+            *visibility = want;
         }
     }
 }

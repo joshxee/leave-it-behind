@@ -104,10 +104,11 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - run: cargo build --release --locked --target x86_64-pc-windows-msvc
       - name: Prepare package
+        shell: bash
         run: |
           mkdir windows
           cp target/x86_64-pc-windows-msvc/release/${{ env.binary }}.exe windows/
-          cp -r assets windows/
+          scripts/stage-assets.sh windows/assets
       - run: Compress-Archive -Path windows/* -DestinationPath ${{ env.binary }}.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -147,7 +148,7 @@ jobs:
         run: |
           mkdir -p ${{ env.binary }}.app/Contents/MacOS
           cp target/${{ matrix.target }}/release/${{ env.binary }} ${{ env.binary }}.app/Contents/MacOS/
-          cp -r assets ${{ env.binary }}.app/Contents/MacOS/
+          scripts/stage-assets.sh ${{ env.binary }}.app/Contents/MacOS/assets
           hdiutil create -fs HFS+ -volname "${{ env.binary }}" -srcfolder ${{ env.binary }}.app ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

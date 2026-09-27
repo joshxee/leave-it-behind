@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 
+use crate::art::engineer::{contact, facing};
 use crate::faults::{Fault, Site, fault_bundle};
 use crate::level::{FaultPlan, Journey};
 use crate::player::{Facing, Player};
@@ -25,11 +26,11 @@ pub enum Scenario {
     Default,
     /// No faults will ever start: free movement and tool use.
     Quiet,
-    /// Loose bolts on the upper engine's spine side; the engineer stands
-    /// below the first bolt, facing it, wrench in hand.
+    /// Loose bolts on the port engine's spine side; the engineer stands in
+    /// front of the first bolt, facing it, wrench in hand.
     Bolts,
-    /// A breach on the airlock's upper wall; the engineer stands below it,
-    /// facing it, tape in hand.
+    /// A breach on the airlock's port wall; the engineer stands in front of
+    /// it, facing it, tape in hand.
     Breach,
     /// Trajectory drift; the engineer stands at the helm seat.
     Drift,
@@ -95,22 +96,36 @@ impl Scenario {
     }
 }
 
-/// Where the `bolts` scenario puts the engineer: below the first bolt of
-/// the upper engine's spine-side panel, the wrench head resting on it.
-pub fn bolts_stand() -> Vec2 {
-    let first = Site::PortEngineInner.bolts().expect("a bolt panel")[0];
-    first + Site::PortEngineInner.normal() * 44.0
+/// Out from a surface along `normal`, far enough that the tool held
+/// facing it rests `short` units off the surface.
+fn stand_off(point: Vec2, normal: Vec2, wrench: bool, short: f32) -> Vec2 {
+    let dir16 = facing(-normal, 16).unwrap_or(0);
+    let reach = contact(wrench, dir16).dot(-normal);
+    point + normal * (reach + short)
 }
 
-/// Where the `breach` scenario puts the engineer: just below the breach.
+/// Where the `bolts` scenario puts the engineer: in front of the first bolt
+/// of the port engine's spine-side panel, the wrench's bite a few units
+/// short of it (the snap pulls it on).
+pub fn bolts_stand() -> Vec2 {
+    let first = Site::PortEngineInner.bolts().expect("a bolt panel")[0];
+    stand_off(first, Site::PortEngineInner.normal(), true, 4.0)
+}
+
+/// Where the `breach` scenario puts the engineer: in front of the breach,
+/// the tape roll's edge pressed to the wall.
 pub fn breach_stand() -> Vec2 {
-    Site::AirlockPortAft.pos() + Site::AirlockPortAft.normal() * 22.0
+    stand_off(
+        Site::AirlockPortAft.pos(),
+        Site::AirlockPortAft.normal(),
+        false,
+        -4.0,
+    )
 }
 
 /// Where the `diagnostics` scenario puts the engineer: at the console.
 pub fn console_stand() -> Vec2 {
-    let console = layout::diag_console();
-    Vec2::new(console.center().x, console.min.y - 30.0)
+    layout::console_point() - Vec2::Y * 30.0
 }
 
 fn place_player(world: &mut World, pos: Vec2, facing: Vec2) {
@@ -150,7 +165,7 @@ fn breach(world: &mut World) {
 fn drift(world: &mut World) {
     quiet(world);
     start(world, Site::Helm, 60.0);
-    place_player(world, layout::helm_seat(), Vec2::X);
+    place_player(world, layout::helm_seat(), layout::ship().helm().facing);
 }
 
 fn diagnostics(world: &mut World) {
@@ -163,7 +178,7 @@ fn diagnostics(world: &mut World) {
 fn scramble(world: &mut World) {
     quiet(world);
     start(world, Site::StarboardEngineOuter, 50.0);
-    start(world, Site::AirlockHatchLower, 45.0);
+    start(world, Site::AirlockHatchStarboard, 45.0);
     start(world, Site::Helm, 50.0);
 }
 
@@ -235,8 +250,9 @@ fn requested_scenario() -> Option<Scenario> {
 mod tests {
     use super::*;
     use crate::faults::breach::BREACH_RADIUS;
+    use crate::player::PLAYER_RADIUS;
     use crate::ship::layout::{colliders, resolve_circle, wall_contact, walls};
-    use crate::tools::{SNAP_RADIUS, TAPE_CONTACT, TAPE_REACH, WRENCH_REACH};
+    use crate::tools::{SNAP_RADIUS, TAPE_CONTACT, tool_tip};
 
     #[test]
     fn names_round_trip() {
@@ -254,12 +270,15 @@ mod tests {
             console_stand(),
             layout::helm_seat(),
         ] {
-            assert_eq!(resolve_circle(stand, 18.0, &colliders), stand);
+            assert_eq!(resolve_circle(stand, PLAYER_RADIUS, &colliders), stand);
         }
         let bolt = Site::PortEngineInner.bolts().unwrap()[0];
-        let tip = bolts_stand() - Site::PortEngineInner.normal() * WRENCH_REACH;
+        let aim = -Site::PortEngineInner.normal();
+        let tip = tool_tip(Tool::Wrench, bolts_stand(), aim, false);
         assert!(tip.distance(bolt) < SNAP_RADIUS);
-        let tape_tip = breach_stand() - Site::AirlockPortAft.normal() * TAPE_REACH;
+        assert!(tip.distance(bolt) > 1.0, "the snap has something to pull");
+        let aim = -Site::AirlockPortAft.normal();
+        let tape_tip = tool_tip(Tool::Tape, breach_stand(), aim, false);
         let contact =
             wall_contact(tape_tip, TAPE_CONTACT, &walls()).expect("tape reaches the wall");
         assert!(contact.point.distance(Site::AirlockPortAft.pos()) < BREACH_RADIUS);

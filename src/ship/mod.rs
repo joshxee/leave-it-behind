@@ -1,26 +1,42 @@
-//! The ship: five rooms along a corridor spine, their walls and props, the
-//! room the player is in, and a camera that frames only that room.
+//! The ship: rooms, walls, doors and props drawn from the map (`map.rs`)
+//! with the derelict-ship tiles, the room the player is in, and a camera
+//! that frames only that room.
 
+pub mod doors;
 pub mod layout;
+pub mod map;
 
 use bevy::camera::ScalingMode;
 use bevy::prelude::*;
 
-pub use layout::RoomId;
+pub use map::RoomId;
 
+use crate::art::tiles::Tile;
+use crate::art::{Art, TILE};
 use crate::player::Player;
 use crate::shapes::{at, rect};
 use crate::{AppState, GameSet, RunSet, palette};
+use map::{Kind, ship};
+
+/// Draw order (z) of the ship's layers. Faults, tools and the engineer sit
+/// above these; the curtains above everything.
+pub mod z {
+    pub const SPACE: f32 = 0.0;
+    pub const FLOOR: f32 = 0.1;
+    pub const STRUCTURE: f32 = 1.0;
+    pub const PROP: f32 = 1.2;
+    pub const CURTAIN: f32 = 10.0;
+}
 
 /// The room the player occupies. The camera shows only this room.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CurrentRoom(pub RoomId);
 
-/// Everything solid: walls and props.
+/// Everything static and solid: walls and props (door leaves are separate).
 #[derive(Resource, Debug, Clone)]
 pub struct Colliders(pub Vec<Rect>);
 
-/// Walls only (outer hull and bulkheads). Tape sticks to these.
+/// Walls only (hull, bulkheads, door jambs). Tape sticks to these.
 #[derive(Resource, Debug, Clone)]
 pub struct Walls(pub Vec<Rect>);
 
@@ -32,32 +48,61 @@ pub struct CameraRig {
     pub shake: Vec2,
 }
 
-/// An engine block. Tinted by the loose-bolts fault as the engine heats up.
+/// An engine block (a placeholder until there is engine art). Tinted by the
+/// loose-bolts fault as the engine heats up.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineBlock {
     Port,
     Starboard,
 }
 
-/// Void-colored sprites that hide the neighbouring rooms.
+/// The colour a tinted placeholder returns to when nothing is wrong.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct BaseColor(pub Color);
+
+/// The sprite of a wall cell, so a fault can swap its tile (a breach).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WallCell(pub IVec2);
+
+/// Void-colored sprites that hide everything beyond the current room.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 enum Curtain {
-    Tail,
-    Front,
+    North,
+    East,
+    South,
+    West,
 }
 
-const CURTAIN_WIDTH: f32 = 4000.0;
+const CURTAIN_SIZE: f32 = 20_000.0;
+
+/// Sets an atlas sprite to `tile` (no change detection when it already is).
+pub fn show_tile(sprite: &mut Sprite, tile: Tile) {
+    if let Some(atlas) = sprite.texture_atlas.as_mut()
+        && atlas.index != tile.index()
+    {
+        atlas.index = tile.index();
+    }
+}
+
+/// What the camera shows of a room (everything else is curtained off).
+pub fn room_frame(room: RoomId) -> Rect {
+    ship().frame(room)
+}
 
 pub struct ShipPlugin;
 
 impl Plugin for ShipPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(CurrentRoom(RoomId::at(layout::player_spawn().x)))
+        app.insert_resource(CurrentRoom(RoomId::at(layout::player_spawn())))
             .insert_resource(Colliders(layout::colliders()))
             .insert_resource(Walls(layout::walls()))
             .insert_resource(ClearColor(palette::VOID))
+            .add_plugins(doors::DoorsPlugin)
             .add_systems(Startup, (spawn_camera, spawn_ship).in_set(GameSet::Input))
-            .add_systems(OnEnter(AppState::Playing), reset_room.in_set(RunSet::Spawn))
+            .add_systems(
+                OnEnter(AppState::Playing),
+                (reset_room, reset_walls).in_set(RunSet::Spawn),
+            )
             .add_systems(
                 FixedUpdate,
                 track_room
@@ -72,7 +117,7 @@ impl Plugin for ShipPlugin {
 }
 
 fn spawn_camera(mut commands: Commands) {
-    let anchor = RoomId::at(layout::player_spawn().x).center();
+    let anchor = RoomId::at(layout::player_spawn()).center();
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
@@ -82,8 +127,8 @@ fn spawn_camera(mut commands: Commands) {
             },
             ..OrthographicProjection::default_2d()
         }),
-        // Flat axis-aligned shapes and pre-antialiased circle textures gain
-        // little from MSAA, and it quadruples fill cost on software renderers.
+        // Pixel art and flat shapes gain nothing from MSAA, and it
+        // quadruples fill cost on software renderers.
         Msaa::Off,
         CameraRig {
             anchor,
@@ -93,68 +138,149 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-fn spawn_ship(mut commands: Commands) {
-    let rect_at = |r: Rect, color: Color, z: f32| (rect(r.size(), color), at(r.center(), z));
-
-    for room in RoomId::ALL {
-        commands.spawn((
-            Name::new(room.name()),
-            rect_at(room.interior(), palette::FLOORS[room.index()], 0.0),
-        ));
-    }
-    let spine = Rect::from_center_size(Vec2::ZERO, Vec2::new(layout::ship_length(), 80.0));
-    commands.spawn(rect_at(spine, palette::SPINE, 0.1));
-
-    for wall in layout::walls() {
-        commands.spawn(rect_at(wall, palette::WALL, 1.0));
-    }
-    // Yellow frames at both edges of every door.
-    for room in RoomId::ALL.iter().skip(1) {
-        let x = room.interior().max.x + layout::WALL / 2.0;
-        for y in [layout::DOOR_HALF, -layout::DOOR_HALF] {
-            let frame = Rect::from_center_size(Vec2::new(x, y), Vec2::new(layout::WALL + 8.0, 6.0));
-            commands.spawn(rect_at(frame, palette::DOOR_FRAME, 1.1));
+/// Draws every cell of the map: space, floor (only the inside quadrants
+/// under hull walls), walls, the cockpit module and props. Doors are
+/// `doors.rs`'s; the diagnostic console and the nav display belong to
+/// their features.
+fn spawn_ship(mut commands: Commands, art: Res<Art>) {
+    let map = ship();
+    let half = TILE / 2.0;
+    for (cell, c) in map.cells() {
+        let center = map.center(cell);
+        if map.kind_at(cell) != Kind::Floor {
+            // Seen through the hull's outside quadrants and breach holes.
+            let space = if (cell.x + cell.y) % 2 == 0 {
+                Tile::Space0
+            } else {
+                Tile::Space1
+            };
+            commands.spawn((art.tile(space), at(center, z::SPACE)));
+        }
+        let floor = map.floor_tile(cell);
+        match map.floor_quadrants(cell) {
+            [true, true, true, true] => {
+                commands.spawn((art.tile(floor), at(center, z::FLOOR)));
+            }
+            quadrants => {
+                for (i, _) in quadrants.iter().enumerate().filter(|(_, inside)| **inside) {
+                    let (x, y) = ((i % 2) as f32 * half, (i / 2) as f32 * half);
+                    commands.spawn((
+                        art.tile_part(floor, Rect::new(x, y, x + half, y + half)),
+                        at(center + Vec2::new(x - half / 2.0, half / 2.0 - y), z::FLOOR),
+                    ));
+                }
+            }
+        }
+        let prop = |tile: Tile| (art.tile(tile), at(center, z::PROP));
+        match c {
+            '#' | '1'..='9' => {
+                if let Some(tile) = map.structure_tile(cell) {
+                    commands.spawn((WallCell(cell), art.tile(tile), at(center, z::STRUCTURE)));
+                }
+            }
+            'V' => {
+                if let Some(tile) = map.structure_tile(cell) {
+                    commands.spawn((art.tile(tile), at(center, z::STRUCTURE)));
+                }
+            }
+            'v' => {
+                commands.spawn(prop(Tile::cockpit(map.module_column(cell), 1)));
+            }
+            'c' => {
+                commands.spawn(prop(Tile::PropCrate));
+            }
+            'l' => {
+                commands.spawn(prop(Tile::PropLocker));
+            }
+            'o' => {
+                commands.spawn(prop(Tile::PropOxygenRack));
+            }
+            'p' => {
+                commands.spawn(prop(Tile::PropPipeStack));
+            }
+            'k' => {
+                commands.spawn(prop(Tile::PropControlConsole));
+            }
+            _ => {}
         }
     }
-    commands.spawn(rect_at(layout::window(), palette::WINDOW, 1.05));
-    commands.spawn(rect_at(layout::hatch(), palette::HATCH, 1.05));
-
-    commands.spawn((
-        EngineBlock::Port,
-        rect_at(layout::port_engine(), palette::ENGINE, 1.2),
-    ));
-    commands.spawn((
-        EngineBlock::Starboard,
-        rect_at(layout::starboard_engine(), palette::ENGINE, 1.2),
-    ));
-    for c in layout::crates() {
-        commands.spawn(rect_at(c, palette::CRATE, 1.2));
+    for (engine, block) in [
+        (EngineBlock::Port, layout::port_engine()),
+        (EngineBlock::Starboard, layout::starboard_engine()),
+    ] {
+        spawn_engine(&mut commands, engine, block);
     }
     let bunk = layout::bunk();
-    commands.spawn(rect_at(bunk, palette::BUNK, 1.2));
-    let pillow = Rect::from_center_size(
-        Vec2::new(bunk.min.x + 22.0, bunk.center().y),
-        Vec2::new(26.0, bunk.height() - 16.0),
-    );
-    commands.spawn(rect_at(pillow, palette::UI_DIM, 1.25));
-    commands.spawn(rect_at(layout::diag_console(), palette::PROP, 1.2));
+    commands.spawn((
+        rect(bunk.size() - 8.0, palette::BUNK),
+        at(bunk.center(), z::PROP),
+    ));
+    let pillow_at = Vec2::new(bunk.min.x + 26.0, bunk.center().y);
+    commands.spawn((
+        rect(Vec2::new(28.0, bunk.height() - 22.0), palette::PILLOW),
+        at(pillow_at, z::PROP + 0.01),
+    ));
 
-    for curtain in [Curtain::Tail, Curtain::Front] {
+    for curtain in [Curtain::North, Curtain::East, Curtain::South, Curtain::West] {
         commands.spawn((
             curtain,
-            rect(Vec2::new(CURTAIN_WIDTH, 4000.0), palette::VOID),
-            at(Vec2::ZERO, 10.0),
+            rect(Vec2::splat(CURTAIN_SIZE), palette::VOID),
+            at(Vec2::ZERO, z::CURTAIN),
         ));
+    }
+}
+
+/// A placeholder engine: a block with a panel and vents across its length.
+fn spawn_engine(commands: &mut Commands, engine: EngineBlock, block: Rect) {
+    let inset = block.inflate(-4.0);
+    commands.spawn((
+        engine,
+        BaseColor(palette::ENGINE),
+        rect(inset.size(), palette::ENGINE),
+        at(block.center(), z::PROP),
+    ));
+    let panel = inset.inflate(-10.0);
+    commands.spawn((
+        engine,
+        BaseColor(palette::ENGINE_PANEL),
+        rect(panel.size(), palette::ENGINE_PANEL),
+        at(block.center(), z::PROP + 0.01),
+    ));
+    let long_x = block.width() > block.height();
+    let count = 6;
+    for i in 0..count {
+        let t = (i as f32 + 0.5) / count as f32 - 0.5;
+        let (pos, size) = if long_x {
+            (
+                block.center() + Vec2::new(t * panel.width(), 0.0),
+                Vec2::new(4.0, panel.height() - 16.0),
+            )
+        } else {
+            (
+                block.center() + Vec2::new(0.0, t * panel.height()),
+                Vec2::new(panel.width() - 16.0, 4.0),
+            )
+        };
+        commands.spawn((rect(size, palette::ENGINE_VENT), at(pos, z::PROP + 0.02)));
     }
 }
 
 fn reset_room(mut room: ResMut<CurrentRoom>) {
-    room.0 = RoomId::at(layout::player_spawn().x);
+    room.0 = RoomId::at(layout::player_spawn());
+}
+
+/// Every wall intact again at the start of a run (breaches swap tiles).
+fn reset_walls(mut walls: Query<(&WallCell, &mut Sprite)>) {
+    for (cell, mut sprite) in &mut walls {
+        if let Some(tile) = ship().structure_tile(cell.0) {
+            show_tile(&mut sprite, tile);
+        }
+    }
 }
 
 fn track_room(players: Query<&Transform, With<Player>>, mut room: ResMut<CurrentRoom>) {
     if let Some(t) = players.iter().next() {
-        let now = RoomId::at(t.translation.x);
+        let now = RoomId::at(t.translation.truncate());
         if room.0 != now {
             room.0 = now;
         }
@@ -169,15 +295,18 @@ fn frame_camera(room: Res<CurrentRoom>, mut cameras: Query<(&mut CameraRig, &mut
     }
 }
 
-/// Covers everything beyond the current room's outer wall faces.
+/// Covers everything outside the current room's walls.
 fn place_curtains(room: Res<CurrentRoom>, mut curtains: Query<(&Curtain, &mut Transform)>) {
-    let interior = room.0.interior();
+    let frame = room_frame(room.0);
+    let half = CURTAIN_SIZE / 2.0;
     for (curtain, mut transform) in &mut curtains {
-        let x = match curtain {
-            Curtain::Tail => interior.min.x - layout::WALL - CURTAIN_WIDTH / 2.0,
-            Curtain::Front => interior.max.x + layout::WALL + CURTAIN_WIDTH / 2.0,
+        let pos = match curtain {
+            Curtain::North => Vec2::new(frame.center().x, frame.max.y + half),
+            Curtain::South => Vec2::new(frame.center().x, frame.min.y - half),
+            Curtain::East => Vec2::new(frame.max.x + half, frame.center().y),
+            Curtain::West => Vec2::new(frame.min.x - half, frame.center().y),
         };
-        transform.translation.x = x;
+        transform.translation = pos.extend(transform.translation.z);
     }
 }
 
@@ -221,5 +350,17 @@ mod tests {
         let window = Vec2::new(2560.0, 720.0);
         let w = cursor_to_world(Vec2::new(1280.0, 0.0), window, Vec2::ZERO);
         assert_eq!(w, Vec2::new(0.0, 360.0));
+    }
+
+    #[test]
+    fn a_room_frame_fits_the_view() {
+        for room in RoomId::ALL {
+            let f = room_frame(room);
+            assert!(
+                f.width() <= layout::VIEW.x && f.height() <= layout::VIEW.y,
+                "{room:?}"
+            );
+            assert!(f.contains(room.center()));
+        }
     }
 }

@@ -31,7 +31,7 @@ pub fn level_one() -> LevelDef {
             FaultSlot::pinned(96.0, Site::HullStarboardMid, 74.0),
             FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 80.0),
             FaultSlot::pinned(132.0, Site::Helm, 80.0),
-            FaultSlot::pinned(140.0, Site::AirlockHatchLower, 68.0),
+            FaultSlot::pinned(140.0, Site::AirlockHatchStarboard, 68.0),
             // Final approach: a scramble.
             FaultSlot::pinned(176.0, Site::PortEngineOuter, 74.0),
             FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 68.0),

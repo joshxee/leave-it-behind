@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use super::sites::BOLT_SITES;
 use super::{Fault, FaultKind, Site};
 use crate::shapes::{Shapes, at};
-use crate::ship::EngineBlock;
+use crate::ship::{BaseColor, EngineBlock};
 use crate::tools::{WrenchTarget, WrenchTightened};
 use crate::{AppState, GameSet, RunSet, palette};
 
@@ -135,14 +135,17 @@ pub fn engine_of(site: Site) -> Option<EngineBlock> {
 }
 
 /// Engine heat: the in-room cue that this engine has a bolt fault.
-fn heat_engines(faults: Query<&Fault>, mut engines: Query<(&EngineBlock, &mut Sprite)>) {
-    for (engine, mut sprite) in &mut engines {
+fn heat_engines(
+    faults: Query<&Fault>,
+    mut engines: Query<(&EngineBlock, &BaseColor, &mut Sprite)>,
+) {
+    for (engine, base, mut sprite) in &mut engines {
         let heat = faults
             .iter()
             .filter(|f| engine_of(f.site) == Some(*engine))
             .map(|f| f.urgency())
             .fold(0.0, f32::max);
-        sprite.color = palette::ENGINE.mix(&palette::ENGINE_HOT, heat);
+        sprite.color = base.0.mix(&palette::ENGINE_HOT, heat);
     }
 }
 

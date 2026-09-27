@@ -4,14 +4,13 @@ use leave_it_behind::faults::bolts::Bolt;
 use leave_it_behind::faults::{Fault, Site};
 use leave_it_behind::level::{Journey, RunStats};
 use leave_it_behind::ship::RoomId;
-use leave_it_behind::ship::layout::HALF_HEIGHT;
 use leave_it_behind::tools::{
     TAPE_CAPACITY, TapeStrip, Tool, ToolBelt, ToolState, WRENCH_TURN_SECS,
 };
 
 use crate::common::{
-    aim_at, click, frame, mouse_down, mouse_up, player_pos, press, put_player, release, run_frames,
-    run_until, scroll, secs, tap, test_app_with,
+    aim_at, click, frame, key_toward, mouse_down, mouse_up, player_pos, press, put_player, release,
+    run_frames, run_until, scroll, secs, tap, test_app_with,
 };
 
 fn held(app: &App) -> Tool {
@@ -77,36 +76,56 @@ fn a_click_turns_the_snapped_bolt_tight() {
 }
 
 #[test]
-fn pulling_the_wrench_away_cancels_the_turn() {
+fn walking_off_cancels_the_turn() {
     let mut app = test_app_with(Scenario::Bolts);
     frame(&mut app);
     click(&mut app);
+    frame(&mut app);
+    assert!(app.world().resource::<ToolState>().turn.is_some());
     press(&mut app, KeyCode::KeyS);
+    // Input read in Update reaches gameplay on the next frame.
+    run_frames(&mut app, 2);
+    assert!(
+        app.world().resource::<ToolState>().turn.is_none(),
+        "the first step stops the turn"
+    );
     run_frames(&mut app, secs(1.0));
     release(&mut app, KeyCode::KeyS);
     run_frames(&mut app, secs(1.0));
     assert_eq!(loose_bolts(&mut app).len(), 3);
-    assert!(app.world().resource::<ToolState>().turn.is_none());
+}
+
+#[test]
+fn clicks_while_walking_do_nothing() {
+    let mut app = test_app_with(Scenario::Bolts);
+    frame(&mut app);
+    let along = Site::PortEngineInner.normal().perp();
+    press(&mut app, key_toward(along));
+    frame(&mut app);
+    for _ in 0..5 {
+        click(&mut app);
+    }
+    let state = app.world().resource::<ToolState>().clone();
+    assert!(state.turn.is_none() && state.snap.is_none(), "{state:?}");
+    release(&mut app, key_toward(along));
+    run_frames(&mut app, secs(1.0));
+    assert_eq!(loose_bolts(&mut app).len(), 3);
 }
 
 #[test]
 fn walking_the_panel_fixes_loose_bolts_in_about_three_seconds() {
     let mut app = test_app_with(Scenario::Bolts);
     let bolts = Site::PortEngineInner.bolts().unwrap();
+    let along = Site::PortEngineInner.normal().perp();
     let start = app.world().resource::<Journey>().elapsed;
     for bolt in bolts {
-        // Walk along the panel until level with the bolt, aiming at it.
-        let dir = if bolt.x > player_pos(&mut app).x + 2.0 {
-            KeyCode::KeyD
-        } else {
-            KeyCode::KeyA
-        };
-        if (bolt.x - player_pos(&mut app).x).abs() > 2.0 {
-            press(&mut app, dir);
-            run_until(&mut app, secs(2.0), |app| {
-                (bolt.x - player_pos(app).x).abs() <= 4.0
-            });
-            release(&mut app, dir);
+        // Walk along the panel until level with the bolt, stop, aim at it.
+        let off = |app: &mut App| (bolt - player_pos(app)).dot(along);
+        if off(&mut app).abs() > 2.0 {
+            let key = key_toward(along * off(&mut app));
+            press(&mut app, key);
+            run_until(&mut app, secs(2.0), |app| off(app).abs() <= 4.0);
+            release(&mut app, key);
         }
         aim_at(&mut app, bolt);
         frame(&mut app);
@@ -135,11 +154,13 @@ fn holding_tape_on_a_breach_seals_it_in_about_three_seconds() {
 fn tape_on_a_bare_wall_is_wasted() {
     let mut app = test_app_with(Scenario::Quiet);
     tap(&mut app, KeyCode::Digit2);
-    let x = RoomId::Hull.center().x;
-    put_player(&mut app, Vec2::new(x, HALF_HEIGHT - 22.0));
+    // Under the hull's front wall, away from its door.
+    let hull = RoomId::Hull.interior();
+    let x = hull.center().x + 200.0;
+    put_player(&mut app, Vec2::new(x, hull.max.y - 22.0));
     // Let the camera cut to the hull first: aiming is relative to the room.
     run_frames(&mut app, 2);
-    aim_at(&mut app, Vec2::new(x, HALF_HEIGHT + 10.0));
+    aim_at(&mut app, Vec2::new(x, hull.max.y + 10.0));
     mouse_down(&mut app);
     run_frames(&mut app, secs(1.0));
     mouse_up(&mut app);
@@ -151,6 +172,25 @@ fn tape_on_a_bare_wall_is_wasted() {
     );
     let mut strips = app.world_mut().query::<&TapeStrip>();
     assert!(strips.iter(app.world()).count() >= 5);
+}
+
+#[test]
+fn tape_stops_while_walking() {
+    let mut app = test_app_with(Scenario::Breach);
+    mouse_down(&mut app);
+    run_frames(&mut app, secs(0.5));
+    let taped = TAPE_CAPACITY - tape_left(&app);
+    assert!(taped > 0.4, "{taped}");
+    let along = Site::AirlockPortAft.normal().perp();
+    press(&mut app, key_toward(along));
+    run_frames(&mut app, secs(0.5));
+    assert!(
+        (TAPE_CAPACITY - tape_left(&app) - taped).abs() < 0.05,
+        "tape kept coming off while walking"
+    );
+    assert!(app.world().resource::<ToolState>().taping.is_none());
+    release(&mut app, key_toward(along));
+    mouse_up(&mut app);
 }
 
 #[test]

@@ -1,0 +1,7 @@
+# Files the game loads at runtime, relative to assets/. Builds copy only these
+# (scripts/stage-assets.sh); everything else under assets/ is source art.
+# A unit test (src/art) checks the game's asset paths are listed here.
+characters/engineer/engineer-atlas.png
+environment/derelict-ship/ship-atlas.png
+fonts/super-indie-font/SuperIndie-GOp7O.ttf
+fonts/super-indie-font/info.txt

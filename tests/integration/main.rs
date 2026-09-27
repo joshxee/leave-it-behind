@@ -4,6 +4,7 @@
 mod alarm;
 mod common;
 mod diagnostics;
+mod doors;
 mod faults;
 mod level;
 mod player;
