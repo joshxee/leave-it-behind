@@ -26,6 +26,7 @@ pub const TAPE: Color = Color::srgb(0.86, 0.78, 0.55);
 pub const NAV_SCREEN: Color = Color::srgb(0.03, 0.10, 0.08);
 pub const NAV_BAND: Color = Color::srgba(0.30, 1.0, 0.55, 0.12);
 pub const NAV_MARKER: Color = Color::srgb(0.55, 1.0, 0.70);
+pub const NAV_NEAR: Color = Color::srgb(1.0, 0.80, 0.25);
 pub const NAV_ALERT: Color = Color::srgb(1.0, 0.30, 0.25);
 pub const JOYSTICK: Color = Color::srgb(0.90, 0.20, 0.20);
 pub const JOYSTICK_BASE: Color = Color::srgb(0.08, 0.08, 0.10);

@@ -71,9 +71,9 @@ impl FaultKind {
     /// Failure clock range in seconds when a level does not pin it.
     pub fn clock_range(self) -> (f32, f32) {
         match self {
-            FaultKind::LooseBolts => (50.0, 60.0),
-            FaultKind::HullBreach => (45.0, 55.0),
-            FaultKind::TrajectoryDrift => (50.0, 60.0),
+            FaultKind::LooseBolts => (60.0, 70.0),
+            FaultKind::HullBreach => (55.0, 65.0),
+            FaultKind::TrajectoryDrift => (60.0, 75.0),
         }
     }
 
@@ -87,7 +87,7 @@ impl FaultKind {
 }
 
 /// Shortest and longest failure clock any fault may have, in seconds.
-pub const CLOCK_LIMITS: (f32, f32) = (45.0, 60.0);
+pub const CLOCK_LIMITS: (f32, f32) = (55.0, 90.0);
 
 /// An active fault.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]

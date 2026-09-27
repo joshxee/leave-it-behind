@@ -10,7 +10,7 @@ test('boots into level one with no errors', async ({ page }, testInfo) => {
     expect(s.entities.players).toBe(1);
     expect(s.room).toBe('Quarters');
     expect(s.tool).toBe('Wrench');
-    expect(s.journey.duration).toBe(240);
+    expect(s.journey.duration).toBe(270);
     expect(s.journey.remaining).toBeGreaterThan(200);
     expect(s.faults).toEqual([]);
     await expect(page.locator('#crash-overlay')).toBeHidden();
@@ -19,7 +19,7 @@ test('boots into level one with no errors', async ({ page }, testInfo) => {
     await attachShot(
       page,
       testInfo,
-      "boot: engineer's quarters (teal floor), orange engineer on the spine holding the wrench, diagnostic console on the upper wall, bunk lower left, ARRIVAL IN 4:00 top centre, belt [1] WRENCH [2] TAPE 20s bottom",
+      "boot: engineer's quarters (teal floor), orange engineer on the spine holding the wrench, diagnostic console on the upper wall, bunk lower left, ARRIVAL IN 4:30 top centre, belt [1] WRENCH [2] TAPE 20s bottom",
     );
   }
 });

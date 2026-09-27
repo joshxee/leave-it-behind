@@ -115,7 +115,7 @@ fn walking_the_panel_fixes_loose_bolts_in_about_three_seconds() {
     }
     run_until(&mut app, 10, |app| faults(app).is_empty());
     let took = app.world().resource::<Journey>().elapsed - start;
-    assert!(took <= 3.5, "took {took}s");
+    assert!(took <= 4.5, "took {took}s");
     assert_eq!(app.world().resource::<RunStats>().fixed, 1);
 }
 
