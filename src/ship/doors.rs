@@ -48,6 +48,21 @@ pub struct Door {
     pub timer: f32,
 }
 
+/// A sound-worthy door transition. The reset at the start of a run is silent.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DoorCue {
+    Opening,
+    Closed,
+}
+
+fn cue_for_transition(before: usize, after: usize) -> Option<DoorCue> {
+    match (before, after) {
+        (0, 1..) => Some(DoorCue::Opening),
+        (1.., 0) => Some(DoorCue::Closed),
+        _ => None,
+    }
+}
+
 impl Door {
     pub fn new(center: Vec2, across_x: bool) -> Self {
         Self {
@@ -117,7 +132,8 @@ pub struct DoorsPlugin;
 
 impl Plugin for DoorsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_doors.in_set(GameSet::Input))
+        app.add_message::<DoorCue>()
+            .add_systems(Startup, spawn_doors.in_set(GameSet::Input))
             .add_systems(
                 OnEnter(AppState::Playing),
                 close_doors.in_set(RunSet::Spawn),
@@ -172,12 +188,16 @@ fn operate_doors(
     time: Res<Time>,
     players: Query<&Transform, With<Player>>,
     mut doors: Query<&mut Door>,
+    mut cues: MessageWriter<DoorCue>,
 ) {
     let player = players.iter().next().map(|t| t.translation.truncate());
     for mut door in &mut doors {
         let want_open = player.is_some_and(|p| p.distance(door.center) <= DOOR_REACH);
         let (frame, timer) = step_door(door.frame, door.timer, want_open, time.delta_secs());
         if (door.frame, door.timer) != (frame, timer) {
+            if let Some(cue) = cue_for_transition(door.frame, frame) {
+                cues.write(cue);
+            }
             door.frame = frame;
             door.timer = timer;
         }
@@ -221,6 +241,15 @@ mod tests {
             (frame, timer) = step_door(frame, timer, false, DT);
         }
         assert_eq!(frame, 2, "closing reverses the frames");
+    }
+
+    #[test]
+    fn sounds_mark_only_the_start_of_opening_and_the_complete_close() {
+        assert_eq!(cue_for_transition(0, 1), Some(DoorCue::Opening));
+        assert_eq!(cue_for_transition(1, 2), None);
+        assert_eq!(cue_for_transition(3, 2), None);
+        assert_eq!(cue_for_transition(1, 0), Some(DoorCue::Closed));
+        assert_eq!(cue_for_transition(0, 0), None);
     }
 
     #[test]

@@ -1,7 +1,8 @@
+use bevy::ecs::message::MessageCursor;
 use bevy::prelude::*;
 use leave_it_behind::Scenario;
 use leave_it_behind::player::PLAYER_RADIUS;
-use leave_it_behind::ship::doors::{DOOR_REACH, Door, OPEN_FRAME};
+use leave_it_behind::ship::doors::{DOOR_REACH, Door, DoorCue, OPEN_FRAME};
 use leave_it_behind::ship::layout::{WALL_HALF, ship};
 use leave_it_behind::ship::{CurrentRoom, RoomId};
 
@@ -64,6 +65,47 @@ fn a_door_opens_as_the_engineer_comes_and_closes_behind_them() {
     assert_eq!(app.world().resource::<CurrentRoom>().0, RoomId::Cockpit);
     run_frames(&mut app, secs(0.5));
     assert_eq!(door_at(&mut app, door).frame, 0, "closed behind them");
+}
+
+#[test]
+fn a_door_emits_one_opening_cue_and_one_clang_cue() {
+    let mut app = test_app_with(Scenario::Quiet);
+    let (door, way) = quarters_door();
+    let mut cursor = MessageCursor::<DoorCue>::default();
+    // Skip cues from the first flight frame near the player's spawn.
+    cursor
+        .read(app.world().resource::<Messages<DoorCue>>())
+        .count();
+
+    put_player(&mut app, door - way * (DOOR_REACH + 60.0));
+    run_frames(&mut app, 2);
+    cursor
+        .read(app.world().resource::<Messages<DoorCue>>())
+        .count();
+
+    put_player(&mut app, door - way * (DOOR_REACH - 10.0));
+    let mut cues = Vec::new();
+    for _ in 0..secs(0.6) {
+        frame(&mut app);
+        cues.extend(
+            cursor
+                .read(app.world().resource::<Messages<DoorCue>>())
+                .copied(),
+        );
+    }
+    assert!(door_at(&mut app, door).is_open());
+
+    put_player(&mut app, door - way * (DOOR_REACH + 60.0));
+    for _ in 0..secs(0.6) {
+        frame(&mut app);
+        cues.extend(
+            cursor
+                .read(app.world().resource::<Messages<DoorCue>>())
+                .copied(),
+        );
+    }
+    assert_eq!(door_at(&mut app, door).frame, 0);
+    assert_eq!(cues, [DoorCue::Opening, DoorCue::Closed]);
 }
 
 #[test]

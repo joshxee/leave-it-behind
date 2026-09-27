@@ -115,7 +115,18 @@ mod tests {
             .map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .collect();
-        for path in [SHIP_ATLAS, ENGINEER_ATLAS, crate::ui::FONT_PATH] {
+        for path in [
+            SHIP_ATLAS,
+            ENGINEER_ATLAS,
+            crate::ui::FONT_PATH,
+            crate::sound::CLANG_PATH,
+            crate::sound::DOOR_PATH,
+            crate::sound::LAB_PATH,
+            crate::sound::WRENCH_PATH,
+            crate::sound::TAPE_PATH,
+            crate::sound::STEERING_PATH,
+            crate::sound::BREACH_PATH,
+        ] {
             assert!(
                 listed.contains(&path),
                 "{path} missing from assets/RUNTIME_ASSETS"

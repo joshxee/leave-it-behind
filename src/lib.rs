@@ -24,6 +24,7 @@ pub mod scenarios;
 pub mod settings;
 pub mod shapes;
 pub mod ship;
+pub mod sound;
 pub mod state;
 pub mod tools;
 pub mod ui;
@@ -53,6 +54,7 @@ impl Plugin for GamePlugin {
                 shapes::ShapesPlugin,
                 art::ArtPlugin,
                 ship::ShipPlugin,
+                sound::SoundPlugin,
                 player::PlayerPlugin,
                 tools::ToolsPlugin,
                 faults::FaultsPlugin,
