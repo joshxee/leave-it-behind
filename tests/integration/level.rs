@@ -65,7 +65,7 @@ fn level_one_teaches_each_fix_in_the_same_order_every_run() {
         });
         started
     };
-    let expected = vec![Site::PortEngineInner, Site::EngineRoomStarboard, Site::Helm];
+    let expected = vec![Site::PortEngineInner, Site::EngineRoomPort, Site::Helm];
     assert_eq!(firsts(1), expected);
     assert_eq!(firsts(12345), expected);
 }

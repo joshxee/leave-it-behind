@@ -5,10 +5,10 @@
 //! starboard, fore and aft), so they hold whichever way the ship points; the
 //! labels the diagnostic screen shows are worked out from the layout.
 //!
-//! Hull breaches can open in every room with a hull wall except the
-//! quarters: the airlock, the main hull, and the cockpit and engine room
-//! (where the other faults are, so there is less running between them). An
-//! unpinned breach picks any of them with equal odds.
+//! Hull breaches can open in the airlock, the main hull, and the cockpit and
+//! both engine rooms (where the other faults are, so there is less running
+//! between them); never in the quarters or the gun room. An unpinned breach
+//! picks any of them with equal odds.
 
 use bevy::prelude::*;
 
@@ -38,7 +38,8 @@ pub enum Site {
     HullPortAft,
     HullStarboardMid,
     HullPortFore,
-    /// Breach points on the cockpit's and the engine room's side walls.
+    /// Breach points on the cockpit's side walls and the engine rooms'
+    /// outer walls.
     CockpitPort,
     CockpitStarboard,
     EngineRoomPort,
@@ -318,10 +319,11 @@ mod tests {
     }
 
     #[test]
-    fn breaches_sit_on_hull_walls_outside_the_quarters() {
+    fn breaches_sit_on_hull_walls_outside_the_quarters_and_gun_room() {
         let walls = walls();
         for site in BREACH_SITES {
             assert_ne!(site.room(), RoomId::Quarters, "{site:?}");
+            assert_ne!(site.room(), RoomId::GunRoom, "{site:?}");
             // Reaching for it from the room touches the wall right there.
             let from = site.pos() + site.normal() * 20.0;
             let contact = wall_contact(from, site.pos(), 0.5, &walls).expect("on a wall");
@@ -331,16 +333,25 @@ mod tests {
     }
 
     #[test]
-    fn the_cockpit_and_engine_room_have_breaches_on_both_sides() {
+    fn the_cockpit_and_engine_rooms_have_breaches_near_the_other_faults() {
         // Close to the helm and the bolts: less running between faults.
-        for room in [RoomId::Cockpit, RoomId::Engine] {
-            let sides: Vec<Vec2> = BREACH_SITES
-                .iter()
-                .filter(|s| s.room() == room)
-                .map(|s| s.normal())
-                .collect();
-            assert_eq!(sides.len(), 2, "{room:?}");
-            assert_eq!(sides[0], -sides[1], "{room:?}: opposite walls");
+        let sides: Vec<Vec2> = BREACH_SITES
+            .iter()
+            .filter(|s| s.room() == RoomId::Cockpit)
+            .map(|s| s.normal())
+            .collect();
+        assert_eq!(sides.len(), 2);
+        assert_eq!(sides[0], -sides[1], "opposite walls");
+        for (site, engine) in [
+            (Site::EngineRoomPort, Site::PortEngineOuter),
+            (Site::EngineRoomStarboard, Site::StarboardEngineOuter),
+        ] {
+            assert_eq!(site.room(), engine.room(), "{site:?}");
+            assert_eq!(
+                site.normal(),
+                -engine.normal(),
+                "{site:?}: facing the engine"
+            );
         }
         assert!(Site::CockpitPort.pos().x < Site::CockpitStarboard.pos().x);
         assert!(Site::EngineRoomPort.pos().x < Site::EngineRoomStarboard.pos().x);

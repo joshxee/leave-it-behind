@@ -76,13 +76,11 @@ fn no_input_no_movement() {
 #[test]
 fn walls_stop_the_player() {
     let mut app = test_app_with(Scenario::Quiet);
-    // Off the spine, so there is wall (no door) ahead.
-    let start = layout::player_spawn();
-    let (door, _) = door_between(RoomId::Quarters, RoomId::Cockpit);
-    assert!(
-        (start.x - door.x).abs() > 60.0,
-        "spawn is beside the door, not in line"
-    );
+    // The quarters' only door is in the wall beside the corridor, so there
+    // is wall ahead.
+    let (door, way) = door_between(RoomId::Quarters, RoomId::ForeCorridor);
+    assert_eq!(way.y, 0.0, "the door is to the side");
+    assert!((layout::player_spawn().y - door.y).abs() < 1.0);
     press(&mut app, KeyCode::KeyW);
     run_frames(&mut app, secs(2.0));
     let p = player_pos(&mut app);
@@ -104,7 +102,7 @@ fn facing_follows_the_mouse() {
 #[test]
 fn walking_through_a_door_cuts_the_camera_to_the_next_room() {
     let mut app = test_app_with(Scenario::Quiet);
-    let (door, way) = door_between(RoomId::Quarters, RoomId::Cockpit);
+    let (door, way) = door_between(RoomId::ForeCorridor, RoomId::Cockpit);
     put_player(&mut app, door - way * 150.0);
     press(&mut app, key_toward(way));
     run_until(&mut app, secs(3.0), |app| {
@@ -139,15 +137,17 @@ fn helm_to_airlock_takes_nine_to_ten_seconds() {
 }
 
 #[test]
-fn adjacent_rooms_are_about_two_seconds_apart() {
-    for pair in RoomId::ALL.windows(2) {
-        let hop = pair[0].center().distance(pair[1].center()) / PLAYER_SPEED;
-        assert!(
-            (1.5..=2.5).contains(&hop),
-            "{:?} -> {:?}: {hop}s",
-            pair[0],
-            pair[1]
+fn rooms_joined_by_a_door_are_one_to_two_and_a_half_seconds_apart() {
+    // Along the spine about two seconds; the rooms beside a corridor are
+    // closer.
+    for d in ship().doors().iter().filter(|d| !d.locked) {
+        let across = if d.across_x { Vec2::Y } else { Vec2::X };
+        let (a, b) = (
+            RoomId::at(d.center + across * 40.0),
+            RoomId::at(d.center - across * 40.0),
         );
+        let hop = a.center().distance(b.center()) / PLAYER_SPEED;
+        assert!((1.0..=2.5).contains(&hop), "{a:?} -> {b:?}: {hop}s");
     }
 }
 
