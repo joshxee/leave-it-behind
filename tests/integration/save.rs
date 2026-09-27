@@ -59,6 +59,7 @@ fn landings_are_recorded_and_the_best_is_kept() {
 
     // The same flight again only ties: not a new best.
     tap(&mut app, KeyCode::KeyR);
+    tap(&mut app, KeyCode::Enter);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);

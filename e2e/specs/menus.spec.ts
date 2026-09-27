@@ -83,6 +83,8 @@ test('the mouse highlights and clicks menu rows', async ({ page }, testInfo) => 
     await clickRow(page, 'BACK');
     await waitForState(page, (s) => s.menu?.screen === 'Main');
     await clickRow(page, 'PLAY');
+    await waitForState(page, (s) => s.menu?.screen === 'Story');
+    await page.mouse.click(640, 360);
     await waitForState(page, (s) => s.state === 'Playing' && s.entities.players === 1);
     expect(errors).toEqual([]);
   } finally {

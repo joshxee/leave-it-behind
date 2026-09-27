@@ -34,6 +34,8 @@ use crate::{AppState, GameSet, Pause, RunSet, palette, running};
 pub enum Screen {
     /// "Click or press any key", once per launch before the first flight.
     Title,
+    /// A single engineer's log before a new flight.
+    Story(usize),
     Main,
     HowToPlay,
     Settings,
@@ -47,6 +49,7 @@ impl Screen {
     pub fn as_str(self) -> &'static str {
         match self {
             Screen::Title => "Title",
+            Screen::Story(_) => "Story",
             Screen::Main => "Main",
             Screen::HowToPlay => "HowToPlay",
             Screen::Settings => "Settings",
@@ -77,6 +80,8 @@ pub enum MenuAction {
     Continue,
     /// A fresh flight: Play, Fly again, or a confirmed Restart.
     Play,
+    /// Continue from the engineer's log into the flight.
+    Launch,
     Open(Screen),
     Back,
     Resume,
@@ -104,6 +109,7 @@ pub struct Menu {
     pub stack: Vec<Entry>,
     /// The title card shows only before the first flight of a launch.
     pub title_done: bool,
+    pub logs_shown: usize,
 }
 
 impl Menu {
@@ -306,9 +312,13 @@ fn menu_keys(
     let Some(top) = menu.top() else {
         return;
     };
-    if top.screen == Screen::Title {
+    if matches!(top.screen, Screen::Title | Screen::Story(_)) {
         if keys.get_just_pressed().next().is_some() {
-            actions.write(MenuAction::Continue);
+            actions.write(if top.screen == Screen::Title {
+                MenuAction::Continue
+            } else {
+                MenuAction::Launch
+            });
         }
         return;
     }
@@ -386,9 +396,13 @@ fn menu_mouse(
     let Some(top) = menu.top() else {
         return;
     };
-    if top.screen == Screen::Title {
+    if matches!(top.screen, Screen::Title | Screen::Story(_)) {
         if mouse.just_released(MouseButton::Left) {
-            actions.write(MenuAction::Continue);
+            actions.write(if top.screen == Screen::Title {
+                MenuAction::Continue
+            } else {
+                MenuAction::Launch
+            });
         }
         return;
     }
@@ -444,6 +458,17 @@ pub fn apply_actions(
                 menu.show_only(Screen::Main);
             }
             MenuAction::Play => {
+                if matches!(menu.screen(), Some(Screen::Story(_))) {
+                    continue;
+                }
+                let index = menu.logs_shown;
+                menu.logs_shown = (index + 1) % screens::ENGINEER_LOGS.len();
+                menu.show_only(Screen::Story(index));
+            }
+            MenuAction::Launch => {
+                if !matches!(menu.screen(), Some(Screen::Story(_))) {
+                    continue;
+                }
                 // Entering Playing again keeps a paused sub-state: unpause too.
                 next_state.set(AppState::Playing);
                 next_pause.set(Pause::Running);
@@ -497,12 +522,20 @@ fn draw_menu(
     };
     let snapshot = ctx.get();
     let font = |size| game_font(asset_server.as_deref(), size);
+    if top.screen == Screen::Title {
+        view::spawn_title(&mut commands, asset_server.as_deref(), &font);
+        return;
+    }
     view::spawn_screen(
         &mut commands,
         &content(top.screen, &snapshot),
         &snapshot.settings,
         top.focus,
-        backdrop,
+        if matches!(top.screen, Screen::Story(_)) {
+            palette::VOID
+        } else {
+            backdrop
+        },
         &font,
     );
 }
@@ -526,6 +559,8 @@ fn smoke_play(
     for event in events.read() {
         if event.0 == "play" {
             actions.write(MenuAction::Play);
+        } else if event.0 == "launch" {
+            actions.write(MenuAction::Launch);
         }
     }
 }

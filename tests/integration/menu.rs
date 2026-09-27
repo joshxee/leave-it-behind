@@ -62,6 +62,11 @@ fn play_starts_level_one_and_shows_the_hud() {
     let mut huds = app.world_mut().query_filtered::<&Visibility, With<Hud>>();
     assert!(huds.iter(app.world()).all(|v| *v == Visibility::Hidden));
     key(&mut app, KeyCode::Enter);
+    assert_eq!(screen(&app), Some(Screen::Story(0)));
+    run_frames(&mut app, secs(2.0));
+    assert_eq!(state(&app), AppState::Menu);
+    assert_eq!(players(&mut app), 0);
+    key(&mut app, KeyCode::Enter);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
     assert_eq!(screen(&app), None);
@@ -186,6 +191,11 @@ fn restart_asks_first_then_starts_a_fresh_unpaused_flight() {
     assert_eq!(focus(&app), 1);
     key(&mut app, KeyCode::Enter);
     choose(&mut app, 1);
+    assert_eq!(screen(&app), Some(Screen::Story(0)));
+    let before_log = elapsed(&app);
+    run_frames(&mut app, secs(2.0));
+    assert_eq!(elapsed(&app), before_log);
+    key(&mut app, KeyCode::Enter);
     frame(&mut app);
     assert_eq!(state(&app), AppState::Playing);
     assert!(!paused(&app));
@@ -246,6 +256,14 @@ fn the_end_screen_flies_again_or_goes_to_the_main_menu() {
     assert_eq!(screen(&app), Some(Screen::End));
     // FLY AGAIN is highlighted: Enter flies again, like R.
     key(&mut app, KeyCode::Enter);
+    assert_eq!(screen(&app), Some(Screen::Story(0)));
+    key(&mut app, KeyCode::Space);
+    run_until(&mut app, 3, |app| state(app) == AppState::Playing);
+    run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
+    frame(&mut app);
+    key(&mut app, KeyCode::KeyR);
+    assert_eq!(screen(&app), Some(Screen::Story(1)));
+    key(&mut app, KeyCode::Space);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);

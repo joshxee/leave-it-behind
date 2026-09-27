@@ -1,4 +1,4 @@
-//! Leave It Behind: game library.
+//! Journey 999: game library.
 //!
 //! `main.rs` only adds [`DefaultPlugins`] and [`GamePlugin`]. Everything else
 //! lives here so integration tests in `tests/integration/` can import it.
@@ -78,7 +78,7 @@ impl Plugin for GamePlugin {
 /// Primary window settings shared by the binary and any headless harness.
 pub fn primary_window() -> Window {
     Window {
-        title: "Leave It Behind".into(),
+        title: "Journey 999".into(),
         resolution: WindowResolution::new(WINDOW_SIZE.x, WINDOW_SIZE.y),
         canvas: Some("#bevy-canvas".into()),
         // Under e2e the canvas keeps a fixed size so screenshots are stable.

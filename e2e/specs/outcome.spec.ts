@@ -10,6 +10,8 @@ test('the countdown reaching zero lands the ship; R flies again', async ({ page 
     await waitForState(page, (s) => s.state === 'Landed');
     await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, FLY AGAIN (R) highlighted and MAIN MENU rows, timer reads LANDED');
     await page.keyboard.press('r');
+    await waitForState(page, (s) => s.menu?.screen === 'Story');
+    await page.keyboard.press('Enter');
     // The landing scenario applies again to the new run: 3 s from arrival.
     const again = await waitForState(page, (s) => s.state === 'Playing');
     expect(again.player.x).toBeCloseTo(start.player.x, 0);

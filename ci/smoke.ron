@@ -8,6 +8,8 @@
     events: [
         (40, NamedScreenshot("title")),
         (50, Custom("play")),
+        (65, NamedScreenshot("story")),
+        (75, Custom("launch")),
         (110, NamedScreenshot("smoke")),
         (130, AppExit),
     ],

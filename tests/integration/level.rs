@@ -133,6 +133,7 @@ fn r_starts_a_fresh_run() {
     run_until(&mut app, 5, |app| state(app) == AppState::Landed);
 
     tap(&mut app, KeyCode::KeyR);
+    tap(&mut app, KeyCode::Enter);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
     assert!(elapsed(&app) < 0.1);
