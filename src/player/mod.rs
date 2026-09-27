@@ -13,9 +13,10 @@ use crate::shapes::at;
 use crate::ship::doors::{Door, door_assist};
 use crate::ship::layout::{self, move_circle};
 use crate::ship::{CameraRig, Colliders, cursor_to_world};
+use crate::upgrades::Upgrades;
 use crate::{AppState, GameSet, RunEntity, RunSet, running};
 
-/// World units per second.
+/// World units per second (before the run-faster upgrade).
 pub const PLAYER_SPEED: f32 = 280.0;
 /// Radius of the engineer's footprint (under 16, so a door's 36-unit gap fits).
 pub const PLAYER_RADIUS: f32 = 14.0;
@@ -230,6 +231,7 @@ fn move_player(
     time: Res<Time>,
     intent: Res<PlayerIntent>,
     colliders: Res<Colliders>,
+    upgrades: Res<Upgrades>,
     doors: Query<&Door>,
     mut players: Query<(&mut Transform, &mut Movement, Has<Locked>), With<Player>>,
 ) {
@@ -245,7 +247,7 @@ fn move_player(
         }
         movement.heading = dir;
         let pos = transform.translation.truncate();
-        let mut delta = dir * PLAYER_SPEED * dt;
+        let mut delta = dir * PLAYER_SPEED * upgrades.speed_factor() * dt;
         let mut solid = colliders.0.clone();
         for door in &doors {
             delta += door_assist(pos, dir, door, dt);

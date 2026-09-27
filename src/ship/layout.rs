@@ -309,7 +309,10 @@ mod tests {
     fn a_reach_into_the_hull_never_touches_its_outside() {
         let walls = walls();
         // Breach points sit on hull walls: space is on the far side.
-        for mark in ('1'..='9').filter_map(|m| ship().wall_mark(m)) {
+        for mark in crate::ship::map::BREACH_MARKS
+            .into_iter()
+            .filter_map(|m| ship().wall_mark(m))
+        {
             let from = mark.point + mark.normal * (R + 10.0);
             let along = mark.normal.perp();
             // Past the wall's centre line (nearer the outside), and through it.

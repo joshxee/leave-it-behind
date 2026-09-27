@@ -8,11 +8,13 @@ use super::{Fault, FaultKind};
 use crate::art::maintenance::MaintenanceArt;
 use crate::shapes::Shapes;
 use crate::tools::TapeLaid;
+use crate::upgrades::Upgrades;
 use crate::{GameSet, not_paused, palette, running};
 
-/// Seconds of tape on the hole to seal it.
+/// Seconds of tape on the hole to seal it (before the wider-tape upgrade).
 pub const SEAL_SECS: f32 = 3.0;
-/// Tape laid within this distance of the hole counts toward sealing it.
+/// Tape laid within this distance of the hole counts toward sealing it
+/// (before the wider-tape upgrade).
 pub const BREACH_RADIUS: f32 = 26.0;
 
 /// Air rushing out of a breach (a child of the fault).
@@ -69,17 +71,23 @@ fn open_breaches(
     }
 }
 
-/// Adds each tick's tape to the nearest breach it touches.
-fn seal_breaches(mut laid: MessageReader<TapeLaid>, mut faults: Query<&mut Fault>) {
+/// Adds each tick's tape to the nearest breach it touches. Wider tape (an
+/// upgrade) reaches further and seals faster.
+fn seal_breaches(
+    upgrades: Res<Upgrades>,
+    mut laid: MessageReader<TapeLaid>,
+    mut faults: Query<&mut Fault>,
+) {
+    let wider = upgrades.tape_factor();
     for tape in laid.read() {
         let nearest = faults
             .iter_mut()
             .map(|f| (f.site.pos().distance(tape.point), f))
-            .filter(|(d, f)| f.kind() == FaultKind::HullBreach && *d <= BREACH_RADIUS)
+            .filter(|(d, f)| f.kind() == FaultKind::HullBreach && *d <= BREACH_RADIUS * wider)
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_, f)| f);
         if let Some(mut fault) = nearest {
-            fault.repair = (fault.repair + tape.secs / SEAL_SECS).min(1.0);
+            fault.repair = (fault.repair + tape.secs * wider / SEAL_SECS).min(1.0);
         }
     }
 }

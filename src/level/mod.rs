@@ -1,13 +1,16 @@
 //! The flight: the countdown to arrival, the fault schedule of the current
 //! level, the damage the faults do, and the outcome (landing, or a fault's
-//! clock running out). A finished flight is recorded in [`Progress`].
+//! clock running out). A finished flight is recorded in [`Progress`]. The
+//! five levels are flown in order ([`campaign`]).
 
+pub mod campaign;
 pub mod def;
 pub mod one;
 pub mod progress;
 
 use bevy::prelude::*;
 
+pub use campaign::{LEVEL_COUNT, LEVEL_IDS, campaign, next_after, number_of};
 pub use def::{Choice, Envelope, FaultSlot, LevelDef, PlannedFault, TimeWindow};
 pub use one::level_one;
 pub use progress::{Damage, LastRun, LevelProgress, Progress, RunRecord};
@@ -15,9 +18,22 @@ pub use progress::{Damage, LastRun, LevelProgress, Progress, RunRecord};
 use crate::faults::{Fault, FaultFailed, FaultFixed, Site, fault_bundle, resolve_faults};
 use crate::{AppState, GameRng, GameSet, RunSet, running};
 
-/// The level being flown.
+/// The level being flown. Level one until the campaign moves on (`menu`).
 #[derive(Resource, Debug, Clone)]
 pub struct CurrentLevel(pub LevelDef);
+
+impl CurrentLevel {
+    /// Where this level comes in the campaign (1-based; 0 for a level
+    /// outside it, as tests may fly).
+    pub fn number(&self) -> usize {
+        number_of(&self.0.id).unwrap_or(0)
+    }
+
+    /// The level flown after this one, if any.
+    pub fn next(&self) -> Option<LevelDef> {
+        next_after(&self.0.id)
+    }
+}
 
 /// Time since launch. The HUD counts `remaining` down to the landing.
 #[derive(Resource, Debug, Clone, Copy, PartialEq)]

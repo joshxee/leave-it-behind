@@ -18,7 +18,7 @@ use crate::art::Art;
 use crate::art::engineer::{ANCHOR, Action, contact, facing};
 use crate::faults::drift::Nav;
 use crate::ship::layout;
-use crate::tools::{Tool, ToolBelt, ToolState, WRENCH_TURN_SECS};
+use crate::tools::{Tool, ToolBelt, ToolState};
 use crate::{GameSet, not_paused};
 
 /// Most the sprite leans toward a snapped bolt, in world units.
@@ -135,7 +135,7 @@ fn animate(
             walking: movement.walking.then_some(movement.heading),
             aim: aim.0,
             snapped,
-            turn: tools.turn.map(|t| 1.0 - t.left / WRENCH_TURN_SECS),
+            turn: tools.turn.map(|t| t.progress()),
             taping: tools.taping.is_some(),
             helm_facing: layout::ship().helm().facing,
         };

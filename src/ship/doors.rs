@@ -239,8 +239,13 @@ mod tests {
     #[test]
     fn a_running_engineer_never_waits_for_a_door() {
         // Straight at a closed door from the edge of its reach: it is fully
-        // open before the engineer's leading edge reaches the leaf.
-        let speed = crate::player::PLAYER_SPEED;
+        // open before the engineer's leading edge reaches the leaf, even
+        // with every pick of the campaign spent on running faster.
+        let fastest = crate::upgrades::Upgrades::all_of(
+            crate::upgrades::Upgrade::RunFaster,
+            crate::upgrades::MAX_PICKS,
+        );
+        let speed = crate::player::PLAYER_SPEED * fastest.speed_factor();
         let radius = crate::player::PLAYER_RADIUS;
         let travel = DOOR_REACH - radius - 12.0;
         let opens_in = OPEN_FRAME as f32 * FRAME_SECS;

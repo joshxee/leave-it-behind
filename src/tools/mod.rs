@@ -21,11 +21,12 @@ use crate::player::{Facing, Locked, Movement, Player, PlayerIntent};
 use crate::shapes::{Shapes, at};
 use crate::ship::Walls;
 use crate::ship::layout::{WallContact, wall_contact};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, GameSet, RunEntity, RunSet, not_paused, palette, running};
 
 /// The bite snaps to a target within this distance of where it rests.
 pub const SNAP_RADIUS: f32 = 30.0;
-/// One click turns a bolt for this long.
+/// One click turns a bolt for this long (before the faster-wrench upgrade).
 pub const WRENCH_TURN_SECS: f32 = 0.9;
 /// The roll lays tape on a wall within this distance of its edge.
 pub const TAPE_CONTACT: f32 = 14.0;
@@ -33,6 +34,8 @@ pub const TAPE_CONTACT: f32 = 14.0;
 pub const TAPE_CAPACITY: f32 = 20.0;
 /// Seconds of tape per visible strip on the wall.
 const TAPE_STRIP_EVERY: f32 = 0.15;
+/// Distance between strips laid side by side (wider tape).
+const TAPE_STRIP_SPACING: f32 = 16.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
@@ -88,6 +91,15 @@ pub struct WrenchTarget {
 pub struct WrenchTurn {
     pub target: Entity,
     pub left: f32,
+    /// How long the whole turn takes (shorter with the faster-wrench upgrade).
+    pub secs: f32,
+}
+
+impl WrenchTurn {
+    /// How far round the turn is, 0 to 1.
+    pub fn progress(&self) -> f32 {
+        (1.0 - self.left / self.secs).clamp(0.0, 1.0)
+    }
 }
 
 /// Where the held tool is this tick. Read by fault repairs and visuals.
@@ -257,6 +269,7 @@ fn aim_tool(
 fn use_wrench(
     time: Res<Time>,
     belt: Res<ToolBelt>,
+    upgrades: Res<Upgrades>,
     mut intent: ResMut<PlayerIntent>,
     mut state: ResMut<ToolState>,
     players: Query<&Movement, With<Player>>,
@@ -286,9 +299,11 @@ fn use_wrench(
         }
         None => {
             if clicked && let Some(target) = snap {
+                let secs = upgrades.wrench_secs();
                 state.turn = Some(WrenchTurn {
                     target,
-                    left: WRENCH_TURN_SECS,
+                    left: secs,
+                    secs,
                 });
             }
         }
@@ -301,6 +316,7 @@ fn use_tape(
     time: Res<Time>,
     intent: Res<PlayerIntent>,
     walls: Res<Walls>,
+    upgrades: Res<Upgrades>,
     mut belt: ResMut<ToolBelt>,
     mut state: ResMut<ToolState>,
     players: Query<(&Transform, &Movement), (With<Player>, Without<Locked>)>,
@@ -331,22 +347,37 @@ fn use_tape(
     if state.strip_carry >= TAPE_STRIP_EVERY {
         state.strip_carry = 0.0;
         state.strips += 1;
-        commands.spawn((
-            TapeStrip,
-            TapeApplication(0.0),
-            RunEntity,
-            tape_strip(&art, contact, state.strips),
-        ));
+        // Wider tape goes on as strips side by side (art stays 1:1).
+        let across = strips_across(&upgrades);
+        for k in 0..across {
+            let offset = (k as f32 - (across - 1) as f32 / 2.0) * TAPE_STRIP_SPACING;
+            commands.spawn((
+                TapeStrip,
+                TapeApplication(0.0),
+                RunEntity,
+                tape_strip(&art, contact, state.strips, offset),
+            ));
+        }
     }
 }
 
-/// A strip stuck on the wall face at `contact`, angled a little differently
-/// each time.
-fn tape_strip(art: &MaintenanceArt, contact: WallContact, n: u32) -> (Sprite, Transform) {
+/// Strips laid side by side each time: one, plus one per wider-tape pick.
+pub fn strips_across(upgrades: &Upgrades) -> usize {
+    1 + upgrades.count(Upgrade::WiderTape)
+}
+
+/// A strip stuck on the wall face at `contact`, `offset` along it, angled a
+/// little differently each time.
+fn tape_strip(
+    art: &MaintenanceArt,
+    contact: WallContact,
+    n: u32,
+    offset: f32,
+) -> (Sprite, Transform) {
     let jitter = (n.wrapping_mul(2_654_435_761) % 1000) as f32 / 1000.0 - 0.5;
     let tangent = contact.normal.perp();
     let pos = crate::ship::depth::wall_art_point(contact.point, contact.normal)
-        + tangent * jitter * 12.0
+        + tangent * (jitter * 12.0 + offset)
         + contact.normal * ((n % 3) as f32 - 1.0) * 3.0;
     (
         art.sprite("tape-strip", 0, Vec2::new(32.0, 12.0)),
@@ -405,7 +436,7 @@ fn draw_snap(
         }
         transform.translation = state.head.extend(transform.translation.z);
         let pulse = 0.75 + 0.25 * (time.elapsed_secs() * 6.0).sin();
-        let turned = state.turn.map_or(0.0, |t| 1.0 - t.left / WRENCH_TURN_SECS);
+        let turned = state.turn.map_or(0.0, |t| t.progress());
         sprite.color = palette::SNAP.with_alpha(pulse * (1.0 - 0.6 * turned));
         sprite.custom_size = Some(Vec2::splat(26.0 - 8.0 * turned));
     }
@@ -492,7 +523,7 @@ mod tests {
             point: Vec2::new(0.0, 260.0),
             normal: Vec2::NEG_Y,
         };
-        let (_, t) = tape_strip(art, contact, 3);
+        let (_, t) = tape_strip(art, contact, 3, 0.0);
         let projected = crate::ship::depth::wall_art_point(contact.point, contact.normal);
         assert!((t.translation.y - projected.y - 3.0).abs() < 1e-3);
     }

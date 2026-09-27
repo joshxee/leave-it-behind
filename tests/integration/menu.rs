@@ -244,7 +244,8 @@ fn the_end_screen_flies_again_or_goes_to_the_main_menu() {
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);
     assert_eq!(screen(&app), Some(Screen::End));
-    // FLY AGAIN is highlighted: Enter flies again, like R.
+    // CONTINUE is highlighted (see `campaign.rs`); FLY AGAIN is next, like R.
+    key(&mut app, KeyCode::ArrowDown);
     key(&mut app, KeyCode::Enter);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);

@@ -9,7 +9,7 @@ use super::{Fault, FaultKind, Site};
 use crate::art::maintenance::MaintenanceArt as Art;
 use crate::shapes::at;
 use crate::ship::EngineBlock;
-use crate::tools::{ToolState, WRENCH_TURN_SECS, WrenchTarget, WrenchTightened};
+use crate::tools::{ToolState, WrenchTarget, WrenchTightened};
 use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
 
 pub const BOLTS_PER_PANEL: usize = 3;
@@ -126,7 +126,7 @@ fn draw_bolts(
     for (entity, bolt, mut transform, mut sprite) in &mut bolts {
         let n = bolt.panel.normal();
         let turn = state.turn.filter(|turn| turn.target == entity);
-        let progress = turn.map_or(0.0, |turn| 1.0 - turn.left / WRENCH_TURN_SECS);
+        let progress = turn.map_or(0.0, |turn| turn.progress());
         art.frame(&mut sprite, "bolt", bolt_frame(bolt.loose, progress));
         let rattle = if bolt.loose && turn.is_none() {
             (t * 21.0 + bolt.pos.x * 0.07).sin().round()

@@ -18,12 +18,13 @@ use bevy::prelude::*;
 use crate::art::engineer::{contact, facing};
 use crate::coach::{Tip, TipsSeen};
 use crate::faults::{Fault, Site, fault_bundle};
-use crate::level::{FaultPlan, Journey};
+use crate::level::{CurrentLevel, FaultPlan, Journey, campaign::level};
 use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
 use crate::settings::Settings;
 use crate::ship::layout;
 use crate::tools::{Tool, ToolBelt};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, Pause, RunSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -61,6 +62,12 @@ pub enum Scenario {
     /// bolts on the port engine with their tip up, the engineer in front of
     /// them with the wrench (as in `bolts`).
     FirstBolts,
+    /// The last level from launch, with an upgrade picked before each level
+    /// (run faster, faster wrench, wider tape, run faster).
+    LevelFive,
+    /// The `level_five` scenario three seconds from arrival, nothing broken:
+    /// landing ends the campaign.
+    FinalLanding,
 }
 
 impl Scenario {
@@ -79,6 +86,8 @@ impl Scenario {
         Scenario::Settings,
         Scenario::FirstFlight,
         Scenario::FirstBolts,
+        Scenario::LevelFive,
+        Scenario::FinalLanding,
     ];
 
     pub fn name(self) -> &'static str {
@@ -97,6 +106,8 @@ impl Scenario {
             Scenario::Settings => "settings",
             Scenario::FirstFlight => "first_flight",
             Scenario::FirstBolts => "first_bolts",
+            Scenario::LevelFive => "level_five",
+            Scenario::FinalLanding => "final_landing",
         }
     }
 
@@ -127,6 +138,8 @@ impl Scenario {
             Scenario::Settings => settings(world),
             Scenario::FirstFlight => first_flight(world),
             Scenario::FirstBolts => first_bolts(world),
+            Scenario::LevelFive => level_five(world),
+            Scenario::FinalLanding => final_landing(world),
         }
     }
 }
@@ -260,6 +273,35 @@ fn first_bolts(world: &mut World) {
     let mut seen = TipsSeen::default();
     seen.mark(Tip::Preflight);
     tips_seen(world, seen);
+}
+
+/// Flies campaign level `number` instead of the one the run started with:
+/// its fault plan and countdown replace the ones already rolled.
+fn fly_level(world: &mut World, number: usize) {
+    let def = level(number).expect("a campaign level");
+    let plan = world.resource_scope(|_, mut rng: Mut<crate::GameRng>| def.roll(&mut rng));
+    world.resource_mut::<FaultPlan>().pending = plan;
+    *world.resource_mut::<Journey>() = Journey::new(def.duration_secs);
+    world.insert_resource(CurrentLevel(def));
+}
+
+fn level_five(world: &mut World) {
+    fly_level(world, 5);
+    let mut upgrades = Upgrades::default();
+    for (level, upgrade) in (2..).zip([
+        Upgrade::RunFaster,
+        Upgrade::FasterWrench,
+        Upgrade::WiderTape,
+        Upgrade::RunFaster,
+    ]) {
+        upgrades.choose(level, upgrade);
+    }
+    world.insert_resource(upgrades);
+}
+
+fn final_landing(world: &mut World) {
+    level_five(world);
+    landing(world);
 }
 
 /// Scenario to apply to every run. Insert before the first `app.update()`.

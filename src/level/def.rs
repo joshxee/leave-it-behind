@@ -39,8 +39,8 @@ impl TimeWindow {
     }
 }
 
-/// One weighted option for a slot. Without a site, the site is picked by
-/// the sites' own weights (see `Site::weight`).
+/// One weighted option for a slot. Without a site, any site of the kind is
+/// picked, each as likely as the others.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Choice {
     pub weight: f32,
@@ -83,6 +83,21 @@ impl FaultSlot {
             choices: vec![Choice::pinned(site)],
             clock: TimeWindow::at(clock),
         }
+    }
+
+    /// Any site of one of `kinds` (equally likely), starting somewhere in
+    /// `window` with a clock somewhere in `clock`.
+    pub fn any(window: TimeWindow, kinds: &[FaultKind], clock: TimeWindow) -> Self {
+        Self {
+            window,
+            choices: kinds.iter().map(|&kind| Choice::any(kind, 1.0)).collect(),
+            clock,
+        }
+    }
+
+    /// Whether this slot can start a fault of `kind`.
+    pub fn can_be(&self, kind: FaultKind) -> bool {
+        self.choices.iter().any(|c| c.kind == kind)
     }
 
     pub fn is_pinned(&self) -> bool {
@@ -218,8 +233,7 @@ impl LevelDef {
                 let choice = s.choices[rng.weighted(&weights)];
                 let site = choice.site.unwrap_or_else(|| {
                     let sites = choice.kind.sites();
-                    let weights: Vec<f32> = sites.iter().map(|s| s.weight()).collect();
-                    sites[rng.weighted(&weights)]
+                    sites[rng.pick(sites.len())]
                 });
                 PlannedFault {
                     at,
@@ -324,19 +338,33 @@ mod tests {
     }
 
     #[test]
-    fn unpinned_breaches_favour_the_airlock() {
+    fn unpinned_breaches_reach_every_breach_site() {
         let level = random_level();
-        let (mut airlock, mut hull) = (0, 0);
+        let mut seen = std::collections::HashSet::new();
         for s in 0..2000 {
             let site = level.roll(&mut GameRng::from_seed(s))[0].site;
             if site.kind() == FaultKind::HullBreach {
-                match site.room() {
-                    crate::ship::RoomId::Airlock => airlock += 1,
-                    _ => hull += 1,
-                }
+                seen.insert(site);
             }
         }
-        assert!(airlock > 4 * hull, "airlock {airlock}, hull {hull}");
+        assert_eq!(seen.len(), crate::faults::sites::BREACH_SITES.len());
+    }
+
+    #[test]
+    fn any_slots_offer_each_kind_equally() {
+        let slot = FaultSlot::any(
+            TimeWindow::new(5.0, 9.0),
+            &[FaultKind::LooseBolts, FaultKind::HullBreach],
+            TimeWindow::at(60.0),
+        );
+        assert!(slot.can_be(FaultKind::HullBreach));
+        assert!(!slot.can_be(FaultKind::TrajectoryDrift));
+        assert!(!slot.is_pinned());
+        assert!(
+            slot.choices
+                .iter()
+                .all(|c| c.weight == 1.0 && c.site.is_none())
+        );
     }
 
     #[test]

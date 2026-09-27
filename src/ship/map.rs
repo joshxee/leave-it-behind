@@ -24,7 +24,8 @@
 //! 'P' 'S'  port / starboard engine block    'b'  bunk
 //! 'c' crate  'l' locker  'o' oxygen rack  'p' pipe stack  'k' control console
 //! '@'  where the engineer starts
-//! '1'..'9'  hull wall with a breach point (`faults::sites` names them)
+//! '1'..'9' 'r' 't' 'u' 'w'  hull wall with a breach point ([`BREACH_MARKS`];
+//!      `faults::sites` names them)
 //! ```
 //!
 //! Rules: every floor cell is in exactly one room (rooms are walled off from
@@ -47,7 +48,7 @@ pub const SHIP: &str = r"
    #Ck..vvv..k.#
    #.....|.....#
    #....NNN....#
-   #....NNN....#
+   r....NNN....t
    #....NNN....#
    #.....|.....#
    #o....|....o#
@@ -66,7 +67,7 @@ pub const SHIP: &str = r"
 #...PP...|...SS...#
 #...PP...|...SS...#
 #...PP...|...SS...#
-#...PP...|...SS...#
+u...PP...|...SS...w
 #...PP...|...SS...#
 #........|........#
 #########=#########
@@ -88,6 +89,16 @@ pub const SHIP: &str = r"
    #.....|.....#
    ####1#X#2####
 ";
+
+/// Map characters that mark a breach point on a hull wall.
+pub const BREACH_MARKS: [char; 13] = [
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', 'r', 't', 'u', 'w',
+];
+
+/// Whether `c` marks a breach point (a hull wall cell).
+pub fn is_breach_mark(c: char) -> bool {
+    BREACH_MARKS.contains(&c)
+}
 
 /// Half the thickness of a wall's solid core (the tiles' 24-pixel footprint).
 pub const WALL_HALF: f32 = 12.0;
@@ -183,7 +194,8 @@ pub enum Kind {
 pub fn kind(c: char) -> Option<Kind> {
     match c {
         ' ' => Some(Kind::Space),
-        '#' | '=' | 'X' | 'V' | '1'..='9' => Some(Kind::Structure),
+        '#' | '=' | 'X' | 'V' => Some(Kind::Structure),
+        c if is_breach_mark(c) => Some(Kind::Structure),
         '.' | '|' | '-' | '@' | 'N' | 'v' | 'P' | 'S' | 'b' | 'c' | 'l' | 'o' | 'p' | 'k' | 'd' => {
             Some(Kind::Floor)
         }
@@ -510,7 +522,7 @@ impl ShipMap {
                         _ => return Err(format!("the door at {cell} does not join two rooms")),
                     }
                 }
-                'X' | '1'..='9' => {
+                c if c == 'X' || is_breach_mark(c) => {
                     let Some((a, b)) = straight else {
                         return Err(format!("{c:?} at {cell} is not in a straight wall"));
                     };
@@ -566,9 +578,9 @@ impl ShipMap {
                 return Err(format!("the {what} ({ch:?}) is not a filled rectangle"));
             }
         }
-        for digit in '1'..='9' {
-            if self.cells_of(digit).count() > 1 {
-                return Err(format!("breach point {digit:?} is marked more than once"));
+        for mark in BREACH_MARKS {
+            if self.cells_of(mark).count() > 1 {
+                return Err(format!("breach point {mark:?} is marked more than once"));
             }
         }
         Ok(())
@@ -687,7 +699,7 @@ impl ShipMap {
     pub fn structure_tile(&self, cell: IVec2) -> Option<Tile> {
         let across = self.across_x(cell);
         match self.get(cell) {
-            '#' | '1'..='9' => Some(Tile::wall(self.mask(cell))),
+            c if c == '#' || is_breach_mark(c) => Some(Tile::wall(self.mask(cell))),
             '=' => Some(Tile::door(across, 0)),
             'X' => Some(Tile::locked_door(across)),
             'V' => Some(Tile::cockpit(self.module_column(cell), 0)),
@@ -759,7 +771,7 @@ impl ShipMap {
             .collect()
     }
 
-    /// The point on the wall face at a breach mark (`'1'..='9'`).
+    /// The point on the wall face at a breach mark ([`BREACH_MARKS`]).
     pub fn wall_mark(&self, mark: char) -> Option<WallMark> {
         let cell = self.cells_of(mark).next()?;
         let normal = SIDES
