@@ -1,5 +1,6 @@
-//! The level format: a flight of fixed length plus a sequence of fault
-//! slots. Each slot has a timing window (when it may start), weighted
+//! The level format: a sequence of fault slots. A flight has no set length:
+//! it lands once every fault is fixed, and the last fault starts early
+//! enough that the flight is over within [`MAX_FLIGHT_SECS`]. Each slot has a timing window (when it may start), weighted
 //! choices (which fault, optionally at which site) and a failure-clock
 //! window. Rolling a level turns every slot into one concrete
 //! [`PlannedFault`]. A level whose windows are all zero-width, with one
@@ -123,8 +124,6 @@ pub struct LevelDef {
     /// Stable key for saved progress. Never change it once released.
     pub id: String,
     pub name: String,
-    /// Seconds from launch to landing.
-    pub duration_secs: f32,
     /// Reseeds `GameRng` at the start of every run, making everything
     /// random in the run (drift headings too) repeatable.
     pub seed: Option<u64>,
@@ -147,7 +146,13 @@ pub struct PlannedFault {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LevelError {
-    Duration(f32),
+    /// No slots: nothing to fix, so the flight could never land.
+    NoFaults,
+    /// Handled within `response_secs`, this slot could keep the flight going
+    /// past [`MAX_FLIGHT_SECS`].
+    Late {
+        slot: usize,
+    },
     NoChoices {
         slot: usize,
     },
@@ -174,8 +179,9 @@ pub enum LevelError {
     },
 }
 
-/// Bounds on a level's length, in seconds.
-pub const DURATION_LIMITS: (f32, f32) = (60.0, 600.0);
+/// The longest a flight may last when each fault is handled within the
+/// envelope's `response_secs`: three minutes.
+pub const MAX_FLIGHT_SECS: f32 = 180.0;
 
 impl LevelDef {
     pub fn is_pinned(&self) -> bool {
@@ -185,8 +191,8 @@ impl LevelDef {
     /// Every problem with the definition, or `Ok` if there are none.
     pub fn validate(&self) -> Result<(), Vec<LevelError>> {
         let mut errors = Vec::new();
-        if !(DURATION_LIMITS.0..=DURATION_LIMITS.1).contains(&self.duration_secs) {
-            errors.push(LevelError::Duration(self.duration_secs));
+        if self.slots.is_empty() {
+            errors.push(LevelError::NoFaults);
         }
         for (slot, s) in self.slots.iter().enumerate() {
             if s.choices.is_empty() {
@@ -204,11 +210,11 @@ impl LevelDef {
             {
                 errors.push(LevelError::SiteKind { slot });
             }
-            if s.window.from < 0.0
-                || s.window.from > s.window.to
-                || s.window.to >= self.duration_secs
-            {
+            if s.window.from < 0.0 || s.window.from > s.window.to {
                 errors.push(LevelError::Window { slot });
+            }
+            if s.window.to + self.envelope.response_secs > MAX_FLIGHT_SECS {
+                errors.push(LevelError::Late { slot });
             }
             if s.clock.from < CLOCK_LIMITS.0
                 || s.clock.from > s.clock.to
@@ -234,6 +240,15 @@ impl LevelDef {
         } else {
             Err(errors)
         }
+    }
+
+    /// How long the flight lasts at most when each fault is handled within
+    /// `response_secs`: the last fault's latest start plus its response.
+    pub fn worst_case_secs(&self) -> f32 {
+        self.slots
+            .iter()
+            .map(|s| s.window.to + self.envelope.response_secs)
+            .fold(0.0, f32::max)
     }
 
     /// Most slots that could need handling at once over every possible roll:
@@ -322,7 +337,6 @@ mod tests {
         LevelDef {
             id: "test".into(),
             name: "test".into(),
-            duration_secs: 200.0,
             seed: None,
             envelope: Envelope {
                 max_overlap: 3,
@@ -438,7 +452,6 @@ mod tests {
     #[test]
     fn validation_reports_every_problem() {
         let mut level = random_level();
-        level.duration_secs = 25.0;
         level.slots[0].clock = TimeWindow::new(30.0, 80.0);
         level.slots[1].choices = vec![Choice {
             weight: 0.0,
@@ -446,11 +459,29 @@ mod tests {
             site: Some(Site::Helm),
         }];
         let errors = level.validate().unwrap_err();
-        assert!(errors.contains(&LevelError::Duration(25.0)));
         assert!(errors.contains(&LevelError::Clock { slot: 0 }));
         assert!(errors.contains(&LevelError::Weight { slot: 1 }));
         assert!(errors.contains(&LevelError::SiteKind { slot: 1 }));
+        level.slots[1].window = TimeWindow::new(90.0, 60.0);
+        let errors = level.validate().unwrap_err();
         assert!(errors.contains(&LevelError::Window { slot: 1 }));
+        level.slots.clear();
+        assert_eq!(level.validate().unwrap_err(), vec![LevelError::NoFaults]);
+    }
+
+    #[test]
+    fn every_flight_is_over_within_three_minutes() {
+        let mut level = random_level();
+        // Slot 1 starts by 90 s and takes 20 s at most.
+        assert_eq!(level.worst_case_secs(), 110.0);
+        level.slots[1].window = TimeWindow::new(150.0, 160.0);
+        assert_eq!(level.worst_case_secs(), MAX_FLIGHT_SECS);
+        assert!(level.validate().is_ok());
+        level.slots[1].window = TimeWindow::new(150.0, 161.0);
+        assert_eq!(
+            level.validate().unwrap_err(),
+            vec![LevelError::Late { slot: 1 }]
+        );
     }
 
     #[test]

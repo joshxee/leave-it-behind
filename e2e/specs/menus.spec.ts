@@ -8,7 +8,7 @@ test('Esc pauses the flight and the clock stops until it resumes', async ({ page
     await page.keyboard.press('Escape');
     const paused = await waitForState(page, (s) => s.paused && s.menu?.screen === 'Pause');
     expect(paused.menu!.items[0].label).toBe('RESUME');
-    await attachShot(page, testInfo, 'paused: engine room dimmed behind PAUSED, ARRIVAL IN line, RESUME highlighted, RESTART, HOW TO PLAY, SETTINGS, MAIN MENU rows, no QUIT');
+    await attachShot(page, testInfo, 'paused: engine room dimmed behind PAUSED, a dim LEVEL 1 line, RESUME highlighted, RESTART, HOW TO PLAY, SETTINGS, MAIN MENU rows, no QUIT');
     await page.waitForTimeout(1500);
     const later = await gameState(page);
     expect(later.journey.elapsed).toBe(paused.journey.elapsed);
@@ -86,7 +86,7 @@ test('the mouse highlights and clicks menu rows', async ({ page }, testInfo) => 
     await waitForState(page, (s) => s.state === 'Playing' && s.entities.players === 1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen, the pre-flight check panel under ARRIVAL IN 2:30');
+    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen, the pre-flight check panel under REPAIRS 0 OF 4');
   }
 });
 

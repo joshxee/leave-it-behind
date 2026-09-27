@@ -28,7 +28,7 @@ pub use screens::{
 pub use view::{MENU_Z, MenuRoot, MenuRow, StepArrow};
 
 use crate::diagnostics::Diagnostics;
-use crate::level::{CurrentLevel, Journey, LEVEL_IDS, LastRun, Progress, RunStats, level_one};
+use crate::level::{CurrentLevel, FaultPlan, LEVEL_IDS, LastRun, Progress, RunStats, level_one};
 use crate::player::PlayerIntent;
 use crate::settings::{SettingKey, Settings};
 use crate::tools::ToolBelt;
@@ -162,7 +162,7 @@ pub struct MenuCtx<'w> {
     progress: Res<'w, Progress>,
     last_run: Res<'w, LastRun>,
     level: Res<'w, CurrentLevel>,
-    journey: Res<'w, Journey>,
+    plan: Res<'w, FaultPlan>,
     stats: Res<'w, RunStats>,
     diag: Res<'w, Diagnostics>,
     belt: Res<'w, ToolBelt>,
@@ -190,7 +190,7 @@ impl MenuCtx<'_> {
                 started: self.stats.started,
                 diag_uses: self.diag.uses,
                 tape_left: self.belt.tape_left,
-                duration: self.journey.duration,
+                total: self.plan.total(&self.stats),
             });
         Ctx {
             web: cfg!(target_arch = "wasm32"),
@@ -198,14 +198,11 @@ impl MenuCtx<'_> {
             level_name: self.level.0.name.clone(),
             level_number: self.level.number(),
             level,
-            next_level: self
-                .level
-                .next()
-                .map(|next| (next.name, next.duration_secs)),
+            next_level: self.level.next().map(|next| (next.name, next.slots.len())),
             upgrades: self.upgrades.clone(),
             levels_landed,
             flights,
-            time_left: self.journey.remaining(),
+            repairs: (self.stats.fixed, self.plan.total(&self.stats)),
             end,
         }
     }

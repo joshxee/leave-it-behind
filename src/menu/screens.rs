@@ -6,6 +6,7 @@ use crate::faults::FaultKind;
 use crate::level::progress::damage_secs;
 use crate::level::{Damage, LEVEL_COUNT, LevelProgress, RunRecord, format_clock};
 use crate::settings::{SettingKey, Settings};
+use crate::ui::repairs_label;
 use crate::upgrades::{Upgrade, Upgrades};
 
 use super::{Confirm, MenuAction, Screen};
@@ -20,14 +21,15 @@ pub struct Ctx {
     /// The level's place in the campaign (1-based).
     pub level_number: usize,
     pub level: Option<LevelProgress>,
-    /// The level after this one: its name and flight time. None on the last.
-    pub next_level: Option<(String, f32)>,
+    /// The level after this one: its name and how many faults it has. None
+    /// on the last.
+    pub next_level: Option<(String, usize)>,
     pub upgrades: Upgrades,
     /// Campaign levels landed at least once, and flights flown in all.
     pub levels_landed: usize,
     pub flights: u32,
-    /// Seconds to arrival (the pause screen shows it).
-    pub time_left: f32,
+    /// Faults fixed and the flight's total (the pause screen shows them).
+    pub repairs: (u32, u32),
     pub end: Option<EndInfo>,
 }
 
@@ -43,7 +45,8 @@ pub struct EndInfo {
     pub started: u32,
     pub diag_uses: u32,
     pub tape_left: f32,
-    pub duration: f32,
+    /// Faults the flight had to fix to land.
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,7 +198,7 @@ fn best_summary(best: &RunRecord) -> String {
 fn how_to_play() -> Content {
     Content::new("HOW TO PLAY")
         .line(
-            "Keep the ship together until it lands. Faults break out around the ship,",
+            "Fix every fault and the ship lands. Faults break out around the ship,",
             Style::Body,
         )
         .line(
@@ -255,10 +258,11 @@ fn pause(ctx: &Ctx) -> Content {
     let mut c = Content::new("PAUSED")
         .line(
             format!(
-                "{}    ARRIVAL IN {}",
+                "{}    {}",
                 ctx.level_name.to_uppercase(),
-                format_clock(ctx.time_left)
-            ),
+                repairs_label(ctx.repairs.0, ctx.repairs.1)
+            )
+            .trim_end(),
             Style::Dim,
         )
         .item("RESUME", MenuAction::Resume)
@@ -354,11 +358,11 @@ fn end(ctx: &Ctx) -> Content {
             .line(kind.map_or("", |k| k.failure_text()), Style::Body)
             .line(
                 format!(
-                    "{}    Survived {} of {}    Faults fixed {}",
+                    "{}    Survived {}    Faults fixed {} of {}",
                     ctx.level_name,
                     format_clock(r.survived),
-                    format_clock(e.duration),
-                    e.fixed
+                    e.fixed,
+                    e.total
                 ),
                 Style::Body,
             )
@@ -398,12 +402,8 @@ fn upgrade(ctx: &Ctx) -> Content {
     for u in Upgrade::ALL {
         c = c.item(u.label(), MenuAction::NextLevel(u));
     }
-    if let Some((name, secs)) = &ctx.next_level {
-        c = c.footer(format!(
-            "NEXT: {}, A {} FLIGHT",
-            name.to_uppercase(),
-            format_clock(*secs)
-        ));
+    if let Some((name, faults)) = &ctx.next_level {
+        c = c.footer(format!("NEXT: {}, {faults} FAULTS", name.to_uppercase()));
     }
     c.footer("Esc back")
 }
@@ -419,11 +419,11 @@ mod tests {
             level_name: "Level 1".into(),
             level_number: 1,
             level: None,
-            next_level: Some(("Level 2".into(), 210.0)),
+            next_level: Some(("Level 2".into(), 7)),
             upgrades: Upgrades::default(),
             levels_landed: 0,
             flights: 0,
-            time_left: 151.0,
+            repairs: (1, 4),
             end: None,
         }
     }
@@ -453,7 +453,7 @@ mod tests {
         );
         let pause = content(Screen::Pause, &ctx(true));
         assert_eq!(pause.items[0].activate(), MenuAction::Resume);
-        assert_eq!(pause.lines[0].0, "LEVEL 1    ARRIVAL IN 2:31");
+        assert_eq!(pause.lines[0].0, "LEVEL 1    REPAIRS 1 OF 4");
         for kind in [
             Confirm::Restart,
             Confirm::MainMenu,
@@ -507,7 +507,7 @@ mod tests {
             started: 10,
             diag_uses: 2,
             tape_left: 7.2,
-            duration: 240.0,
+            total: 10,
         }
     }
 
@@ -536,7 +536,7 @@ mod tests {
         let shown = content(Screen::End, &c);
         assert_eq!(shown.title, "OXYGEN DEPLETED");
         let text: Vec<&str> = shown.lines.iter().map(|(t, _)| t.as_str()).collect();
-        assert!(text.contains(&"Level 1    Survived 2:31 of 4:00    Faults fixed 3"));
+        assert!(text.contains(&"Level 1    Survived 2:31    Faults fixed 3 of 10"));
         assert!(text.contains(&"Best: landed, 14s damage"));
         assert_eq!(labels(&shown), vec!["FLY AGAIN (R)", "MAIN MENU"]);
     }
@@ -582,7 +582,7 @@ mod tests {
             text.iter()
                 .any(|t| t.starts_with("Run faster") && !t.contains("taken"))
         );
-        assert_eq!(shown.footer[0], "NEXT: LEVEL 2, A 3:30 FLIGHT");
+        assert_eq!(shown.footer[0], "NEXT: LEVEL 2, 7 FAULTS");
     }
 
     #[test]

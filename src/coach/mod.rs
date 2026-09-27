@@ -1,8 +1,8 @@
 //! Coaching: level one's first flight walks a new player through the game.
 //! It never pauses anything; it only points the way.
 //!
-//! - Pre-flight check: the flight waits to launch (the countdown and the
-//!   fault schedule hold, see [`Journey::launched`]) until the engineer has
+//! - Pre-flight check: the flight waits to launch (the fault schedule
+//!   holds, see [`Journey::launched`]) until the engineer has
 //!   looked at the diagnostic screen. Then it launches as a normal flight,
 //!   with a short note on what that screen is for.
 //! - Tips: the first fault of each kind brings up a tip on how to fix it,
@@ -36,7 +36,7 @@ pub const LAUNCH_NOTE: &str =
     "Cleared for launch. When the alarm goes off, check this console to find the fault.";
 /// Above the HUD (10) and the diagnostic screen (20), below menus (40).
 const COACH_Z: i32 = 25;
-/// Just under the countdown, clear of the diagnostic screen's panel.
+/// Just under the repairs count, clear of the diagnostic screen's panel.
 const PANEL_TOP: f32 = 56.0;
 const PANEL_MAX_WIDTH: f32 = 900.0;
 
@@ -459,7 +459,7 @@ mod tests {
     }
 
     fn launched() -> Journey {
-        Journey::new(270.0)
+        Journey::default()
     }
 
     const ON: Coach = Coach {

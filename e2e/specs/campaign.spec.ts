@@ -16,15 +16,15 @@ test('landing a level leads to the upgrade screen and on to the next level', asy
     await page.keyboard.press('Enter');
     const choosing = await waitForState(page, (s) => s.menu?.screen === 'Upgrade');
     expect(choosing.menu!.items.map((i) => i.label)).toEqual(['RUN FASTER', 'FASTER WRENCH', 'WIDER TAPE']);
-    await attachShot(page, testInfo, 'upgrade: dimmed ship behind CHOOSE AN UPGRADE, three dim description lines, RUN FASTER highlighted, FASTER WRENCH and WIDER TAPE rows, NEXT: LEVEL 2, A 3:30 FLIGHT footer');
+    await attachShot(page, testInfo, 'upgrade: dimmed ship behind CHOOSE AN UPGRADE, three dim description lines, RUN FASTER highlighted, FASTER WRENCH and WIDER TAPE rows, NEXT: LEVEL 2, 7 FAULTS footer');
 
     // Pick with the mouse.
     await clickRow(page, 'FASTER WRENCH');
     const two = await waitForState(page, (s) => s.state === 'Playing' && s.level.number === 2);
     expect(two.upgrades).toEqual({ runFaster: 0, fasterWrench: 1, widerTape: 0 });
-    expect(two.journey.duration).toBe(210);
+    expect(two.stats.total).toBe(7);
     expect(two.menu).toBeNull();
-    await attachShot(page, testInfo, 'level-two: quarters, ARRIVAL IN under 0:04, LEVEL 2 OF 5 at the top right');
+    await attachShot(page, testInfo, 'level-two: quarters, ALL FIXED - LANDING at the top, LEVEL 2 OF 5 under the room name');
 
     // Level two lands too: pick with a number key.
     await waitForState(page, (s) => s.state === 'Landed' && s.menu?.screen === 'End');
