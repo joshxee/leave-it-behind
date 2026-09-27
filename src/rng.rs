@@ -31,6 +31,14 @@ impl GameRng {
         lo + (hi - lo) * self.unit()
     }
 
+    /// Uniform index in `0..n`. Returns 0 without drawing when `n` is at most 1.
+    pub fn pick(&mut self, n: usize) -> usize {
+        if n <= 1 {
+            return 0;
+        }
+        ((self.unit() * n as f32) as usize).min(n - 1)
+    }
+
     /// Index picked with probability proportional to `weights`. Returns 0
     /// without drawing when there is at most one option.
     pub fn weighted(&mut self, weights: &[f32]) -> usize {
@@ -70,6 +78,7 @@ mod tests {
         let mut b = GameRng::from_seed(7);
         assert_eq!(a.range(3.0, 3.0), 3.0);
         assert_eq!(a.weighted(&[5.0]), 0);
+        assert_eq!(a.pick(1), 0);
         // `a` drew nothing, so both streams are still in step.
         assert_eq!(a.unit(), b.unit());
     }
@@ -80,6 +89,16 @@ mod tests {
         for _ in 0..1000 {
             assert_ne!(rng.weighted(&[1.0, 0.0, 2.0]), 1);
         }
+    }
+
+    #[test]
+    fn pick_reaches_every_index() {
+        let mut rng = GameRng::from_seed(3);
+        let mut seen = [0; 4];
+        for _ in 0..400 {
+            seen[rng.pick(4)] += 1;
+        }
+        assert!(seen.iter().all(|&n| n > 50), "{seen:?}");
     }
 
     #[test]

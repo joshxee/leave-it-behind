@@ -1,5 +1,6 @@
 //! Menus and pausing: the title card, the main menu, how to play, settings,
-//! the pause menu, the end-of-flight screen and confirm dialogs.
+//! the pause menu, the end-of-flight screen, the upgrade screen between
+//! levels and confirm dialogs.
 //!
 //! [`Menu`] is a stack of screens; the top one is drawn (`view`) from
 //! [`content`]. Keyboard (arrows or WASD, Enter or Space, Esc) and mouse
@@ -9,6 +10,10 @@
 //! Pausing: Esc or P during a flight, or the window losing focus (a
 //! setting), enters [`Pause::Paused`]; gameplay stops (`running`) and the
 //! pause menu opens. Resuming clears any input held from before.
+//!
+//! The campaign: PLAY starts a new game at level one without upgrades.
+//! Landing a level offers CONTINUE: the upgrade screen, where picking one
+//! flies the next level.
 
 mod screens;
 mod view;
@@ -23,11 +28,12 @@ pub use screens::{
 pub use view::{MENU_Z, MenuRoot, MenuRow, StepArrow};
 
 use crate::diagnostics::Diagnostics;
-use crate::level::{CurrentLevel, Journey, LastRun, Progress, RunStats};
+use crate::level::{CurrentLevel, FaultPlan, LEVEL_IDS, LastRun, Progress, RunStats, level_one};
 use crate::player::PlayerIntent;
 use crate::settings::{SettingKey, Settings};
 use crate::tools::ToolBelt;
 use crate::ui::{Notices, game_font};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, GameSet, Pause, RunSet, palette, running};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -42,6 +48,8 @@ pub enum Screen {
     Pause,
     /// Landed or lost: the flight's score and what next.
     End,
+    /// After landing a level with another to come: pick one upgrade, then fly on.
+    Upgrade,
     Confirm(Confirm),
 }
 
@@ -55,6 +63,7 @@ impl Screen {
             Screen::Settings => "Settings",
             Screen::Pause => "Pause",
             Screen::End => "End",
+            Screen::Upgrade => "Upgrade",
             Screen::Confirm(Confirm::Restart) => "ConfirmRestart",
             Screen::Confirm(Confirm::MainMenu) => "ConfirmMainMenu",
             Screen::Confirm(Confirm::Quit) => "ConfirmQuit",
@@ -78,10 +87,14 @@ pub enum Confirm {
 pub enum MenuAction {
     /// From the title card to the main menu.
     Continue,
-    /// A fresh flight: Play, Fly again, or a confirmed Restart.
+    /// A new game: level one, no upgrades (PLAY on the main menu).
+    NewGame,
+    /// A fresh flight of the current level: Fly again, or a confirmed Restart.
     Play,
     /// Continue from the engineer's log into the flight.
     Launch,
+    /// Take this upgrade and fly the next level.
+    NextLevel(Upgrade),
     Open(Screen),
     Back,
     Resume,
@@ -155,15 +168,20 @@ pub struct MenuCtx<'w> {
     progress: Res<'w, Progress>,
     last_run: Res<'w, LastRun>,
     level: Res<'w, CurrentLevel>,
-    journey: Res<'w, Journey>,
+    plan: Res<'w, FaultPlan>,
     stats: Res<'w, RunStats>,
     diag: Res<'w, Diagnostics>,
     belt: Res<'w, ToolBelt>,
+    upgrades: Res<'w, Upgrades>,
 }
 
 impl MenuCtx<'_> {
     pub fn get(&self) -> Ctx {
         let level = self.progress.level(&self.level.0.id).cloned();
+        let flown = LEVEL_IDS.iter().filter_map(|id| self.progress.level(id));
+        let (levels_landed, flights) = flown.fold((0, 0), |(landed, flights), l| {
+            (landed + usize::from(l.landings > 0), flights + l.flights)
+        });
         let ended = matches!(self.state.get(), AppState::Landed | AppState::Lost);
         let end = self
             .last_run
@@ -178,14 +196,19 @@ impl MenuCtx<'_> {
                 started: self.stats.started,
                 diag_uses: self.diag.uses,
                 tape_left: self.belt.tape_left,
-                duration: self.journey.duration,
+                total: self.plan.total(&self.stats),
             });
         Ctx {
             web: cfg!(target_arch = "wasm32"),
             settings: self.settings.clone(),
             level_name: self.level.0.name.clone(),
+            level_number: self.level.number(),
             level,
-            time_left: self.journey.remaining(),
+            next_level: self.level.next().map(|next| (next.name, next.slots.len())),
+            upgrades: self.upgrades.clone(),
+            levels_landed,
+            flights,
+            repairs: (self.stats.fixed, self.plan.total(&self.stats)),
             end,
         }
     }
@@ -196,7 +219,11 @@ impl MenuCtx<'_> {
 
     /// Whether what the screens show may have changed.
     fn changed(&self) -> bool {
-        self.settings.is_changed() || self.progress.is_changed() || self.last_run.is_changed()
+        self.settings.is_changed()
+            || self.progress.is_changed()
+            || self.last_run.is_changed()
+            || self.level.is_changed()
+            || self.upgrades.is_changed()
     }
 }
 
@@ -299,6 +326,10 @@ fn hotkey(screen: Screen, keys: &ButtonInput<KeyCode>) -> Option<MenuAction> {
     match screen {
         Screen::Pause if keys.just_pressed(KeyCode::KeyP) => Some(MenuAction::Resume),
         Screen::End if keys.just_pressed(KeyCode::KeyR) => Some(MenuAction::Play),
+        // 1, 2, 3 pick an upgrade, in the order the screen lists them.
+        Screen::Upgrade => crate::player::slot_from_keys(keys)
+            .and_then(|slot| Upgrade::ALL.get(slot))
+            .map(|&u| MenuAction::NextLevel(u)),
         _ => None,
     }
 }
@@ -446,20 +477,33 @@ pub fn apply_actions(
     mut menu: ResMut<Menu>,
     mut settings: ResMut<Settings>,
     mut progress: ResMut<Progress>,
+    mut level: ResMut<CurrentLevel>,
+    mut upgrades: ResMut<Upgrades>,
     mut notices: ResMut<Notices>,
     mut next_state: ResMut<NextState<AppState>>,
     mut next_pause: ResMut<NextState<Pause>>,
     mut exit: MessageWriter<AppExit>,
 ) {
+    fn fly(next_state: &mut NextState<AppState>, next_pause: &mut NextState<Pause>) {
+        // Entering Playing again keeps a paused sub-state: unpause too.
+        next_state.set(AppState::Playing);
+        next_pause.set(Pause::Running);
+    }
+    // Two picks in one frame (a click and a key) still move on one level.
+    let mut moved_on = false;
     for action in actions.read() {
         match *action {
             MenuAction::Continue => {
                 menu.title_done = true;
                 menu.show_only(Screen::Main);
             }
-            MenuAction::Play => {
+            MenuAction::NewGame | MenuAction::Play => {
                 if matches!(menu.screen(), Some(Screen::Story(_))) {
                     continue;
+                }
+                if *action == MenuAction::NewGame {
+                    *level = CurrentLevel(level_one());
+                    *upgrades = Upgrades::default();
                 }
                 let index = menu.logs_shown;
                 menu.logs_shown = (index + 1) % screens::ENGINEER_LOGS.len();
@@ -469,9 +513,21 @@ pub fn apply_actions(
                 if !matches!(menu.screen(), Some(Screen::Story(_))) {
                     continue;
                 }
-                // Entering Playing again keeps a paused sub-state: unpause too.
-                next_state.set(AppState::Playing);
-                next_pause.set(Pause::Running);
+                fly(&mut next_state, &mut next_pause);
+            }
+            MenuAction::NextLevel(upgrade) => {
+                if moved_on || matches!(menu.screen(), Some(Screen::Story(_))) {
+                    continue;
+                }
+                let Some(next) = level.next() else {
+                    continue;
+                };
+                moved_on = true;
+                upgrades.choose(crate::level::number_of(&next.id).unwrap_or(2), upgrade);
+                *level = CurrentLevel(next);
+                let index = menu.logs_shown;
+                menu.logs_shown = (index + 1) % screens::ENGINEER_LOGS.len();
+                menu.show_only(Screen::Story(index));
             }
             MenuAction::Open(screen) => menu.open(screen),
             MenuAction::Back => menu.back(),

@@ -11,10 +11,10 @@ pub enum AppState {
     Boot,
     /// The title card, the main menu and its screens (see `menu`).
     Menu,
-    /// The flight: faults, repairs and the countdown to arrival. Pausing is
+    /// The flight: faults and repairs until every fault is fixed. Pausing is
     /// the [`Pause`] sub-state, so it never restarts the run.
     Playing,
-    /// The countdown reached zero and the ship touched down. Victory.
+    /// Every fault fixed and the ship touched down. Victory.
     Landed,
     /// A fault's failure clock ran out.
     Lost,
@@ -77,7 +77,7 @@ pub enum GameSet {
     Move,
     /// Tools and interactions: wrench, tape, helm, diagnostics.
     Act,
-    /// Fault clocks and repairs, the fault schedule, the journey countdown.
+    /// Fault clocks and repairs, the fault schedule, the journey clock.
     Simulate,
     /// Fixed and failed faults, and the flight's outcome.
     Resolve,

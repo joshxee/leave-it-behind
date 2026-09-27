@@ -1,5 +1,6 @@
-//! The level format: a flight of fixed length plus a sequence of fault
-//! slots. Each slot has a timing window (when it may start), weighted
+//! The level format: a sequence of fault slots. A flight has no set length:
+//! it lands once every fault is fixed, and the last fault starts early
+//! enough that the flight is over within [`MAX_FLIGHT_SECS`]. Each slot has a timing window (when it may start), weighted
 //! choices (which fault, optionally at which site) and a failure-clock
 //! window. Rolling a level turns every slot into one concrete
 //! [`PlannedFault`]. A level whose windows are all zero-width, with one
@@ -9,9 +10,12 @@
 //! The [`Envelope`] bounds difficulty: assuming the engineer handles each
 //! fault within `response_secs`, no rolled schedule may ever ask for more than
 //! `max_overlap` faults at once. `validate` checks the worst case over every
-//! possible roll, so randomized levels stay inside the same envelope.
+//! possible roll, so randomized levels stay inside the same envelope. It
+//! also checks that, handled that fast, no roll could spend the oxygen or
+//! the engine's heat (`worst_case_strain`).
 
 use crate::GameRng;
+use crate::faults::vitals::RECOVER_SECS;
 use crate::faults::{CLOCK_LIMITS, FaultKind, Site};
 
 /// Inclusive range of seconds. `from == to` pins the value.
@@ -39,8 +43,8 @@ impl TimeWindow {
     }
 }
 
-/// One weighted option for a slot. Without a site, the site is picked by
-/// the sites' own weights (see `Site::weight`).
+/// One weighted option for a slot. Without a site, any site of the kind is
+/// picked, each as likely as the others.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Choice {
     pub weight: f32,
@@ -85,6 +89,21 @@ impl FaultSlot {
         }
     }
 
+    /// Any site of one of `kinds` (equally likely), starting somewhere in
+    /// `window` with a clock somewhere in `clock`.
+    pub fn any(window: TimeWindow, kinds: &[FaultKind], clock: TimeWindow) -> Self {
+        Self {
+            window,
+            choices: kinds.iter().map(|&kind| Choice::any(kind, 1.0)).collect(),
+            clock,
+        }
+    }
+
+    /// Whether this slot can start a fault of `kind`.
+    pub fn can_be(&self, kind: FaultKind) -> bool {
+        self.choices.iter().any(|c| c.kind == kind)
+    }
+
     pub fn is_pinned(&self) -> bool {
         self.window.is_pinned()
             && self.clock.is_pinned()
@@ -105,8 +124,6 @@ pub struct LevelDef {
     /// Stable key for saved progress. Never change it once released.
     pub id: String,
     pub name: String,
-    /// Seconds from launch to landing.
-    pub duration_secs: f32,
     /// Reseeds `GameRng` at the start of every run, making everything
     /// random in the run (drift headings too) repeatable.
     pub seed: Option<u64>,
@@ -129,17 +146,42 @@ pub struct PlannedFault {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LevelError {
-    Duration(f32),
-    NoChoices { slot: usize },
-    Weight { slot: usize },
-    SiteKind { slot: usize },
-    Window { slot: usize },
-    Clock { slot: usize },
-    Envelope { worst: usize, max: usize },
+    /// No slots: nothing to fix, so the flight could never land.
+    NoFaults,
+    /// Handled within `response_secs`, this slot could keep the flight going
+    /// past [`MAX_FLIGHT_SECS`].
+    Late {
+        slot: usize,
+    },
+    NoChoices {
+        slot: usize,
+    },
+    Weight {
+        slot: usize,
+    },
+    SiteKind {
+        slot: usize,
+    },
+    Window {
+        slot: usize,
+    },
+    Clock {
+        slot: usize,
+    },
+    Envelope {
+        worst: usize,
+        max: usize,
+    },
+    /// Handled within `response_secs`, some roll could still spend this
+    /// kind's pool (oxygen or engine heat).
+    Pool {
+        kind: FaultKind,
+    },
 }
 
-/// Bounds on a level's length, in seconds.
-pub const DURATION_LIMITS: (f32, f32) = (60.0, 600.0);
+/// The longest a flight may last when each fault is handled within the
+/// envelope's `response_secs`: three minutes.
+pub const MAX_FLIGHT_SECS: f32 = 180.0;
 
 impl LevelDef {
     pub fn is_pinned(&self) -> bool {
@@ -149,8 +191,8 @@ impl LevelDef {
     /// Every problem with the definition, or `Ok` if there are none.
     pub fn validate(&self) -> Result<(), Vec<LevelError>> {
         let mut errors = Vec::new();
-        if !(DURATION_LIMITS.0..=DURATION_LIMITS.1).contains(&self.duration_secs) {
-            errors.push(LevelError::Duration(self.duration_secs));
+        if self.slots.is_empty() {
+            errors.push(LevelError::NoFaults);
         }
         for (slot, s) in self.slots.iter().enumerate() {
             if s.choices.is_empty() {
@@ -168,11 +210,11 @@ impl LevelDef {
             {
                 errors.push(LevelError::SiteKind { slot });
             }
-            if s.window.from < 0.0
-                || s.window.from > s.window.to
-                || s.window.to >= self.duration_secs
-            {
+            if s.window.from < 0.0 || s.window.from > s.window.to {
                 errors.push(LevelError::Window { slot });
+            }
+            if s.window.to + self.envelope.response_secs > MAX_FLIGHT_SECS {
+                errors.push(LevelError::Late { slot });
             }
             if s.clock.from < CLOCK_LIMITS.0
                 || s.clock.from > s.clock.to
@@ -188,11 +230,25 @@ impl LevelDef {
                 max: self.envelope.max_overlap,
             });
         }
+        for kind in FaultKind::ALL.into_iter().filter(|k| k.pooled()) {
+            if self.worst_case_strain(kind) >= 1.0 {
+                errors.push(LevelError::Pool { kind });
+            }
+        }
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
         }
+    }
+
+    /// How long the flight lasts at most when each fault is handled within
+    /// `response_secs`: the last fault's latest start plus its response.
+    pub fn worst_case_secs(&self) -> f32 {
+        self.slots
+            .iter()
+            .map(|s| s.window.to + self.envelope.response_secs)
+            .fold(0.0, f32::max)
     }
 
     /// Most slots that could need handling at once over every possible roll:
@@ -203,6 +259,28 @@ impl LevelDef {
             .iter()
             .map(|s| (s.window.from, s.window.to + self.envelope.response_secs));
         max_overlap(spans)
+    }
+
+    /// Most of `kind`'s pool any roll could spend (1 is fatal) if each fault
+    /// is handled within `response_secs`. Worst case: every slot that may
+    /// roll this kind does, at its shortest clock, and drains for the whole
+    /// response; the pool recovers only in gaps no roll can close.
+    pub fn worst_case_strain(&self, kind: FaultKind) -> f32 {
+        let response = self.envelope.response_secs;
+        let mut slots: Vec<&FaultSlot> = self
+            .slots
+            .iter()
+            .filter(|s| s.choices.iter().any(|c| c.kind == kind))
+            .collect();
+        slots.sort_by(|a, b| a.window.from.total_cmp(&b.window.from));
+        let (mut spent, mut peak, mut busy_until) = (0.0_f32, 0.0_f32, f32::NEG_INFINITY);
+        for s in slots {
+            let rest = (s.window.from - busy_until).max(0.0);
+            spent = (spent - rest / RECOVER_SECS).max(0.0) + response / s.clock.from;
+            peak = peak.max(spent);
+            busy_until = busy_until.max(s.window.to + response);
+        }
+        peak
     }
 
     /// Turns every slot into a concrete fault, sorted by start time. A
@@ -218,8 +296,7 @@ impl LevelDef {
                 let choice = s.choices[rng.weighted(&weights)];
                 let site = choice.site.unwrap_or_else(|| {
                     let sites = choice.kind.sites();
-                    let weights: Vec<f32> = sites.iter().map(|s| s.weight()).collect();
-                    sites[rng.weighted(&weights)]
+                    sites[rng.pick(sites.len())]
                 });
                 PlannedFault {
                     at,
@@ -260,7 +337,6 @@ mod tests {
         LevelDef {
             id: "test".into(),
             name: "test".into(),
-            duration_secs: 200.0,
             seed: None,
             envelope: Envelope {
                 max_overlap: 3,
@@ -324,19 +400,33 @@ mod tests {
     }
 
     #[test]
-    fn unpinned_breaches_favour_the_airlock() {
+    fn unpinned_breaches_reach_every_breach_site() {
         let level = random_level();
-        let (mut airlock, mut hull) = (0, 0);
+        let mut seen = std::collections::HashSet::new();
         for s in 0..2000 {
             let site = level.roll(&mut GameRng::from_seed(s))[0].site;
             if site.kind() == FaultKind::HullBreach {
-                match site.room() {
-                    crate::ship::RoomId::Airlock => airlock += 1,
-                    _ => hull += 1,
-                }
+                seen.insert(site);
             }
         }
-        assert!(airlock > 4 * hull, "airlock {airlock}, hull {hull}");
+        assert_eq!(seen.len(), crate::faults::sites::BREACH_SITES.len());
+    }
+
+    #[test]
+    fn any_slots_offer_each_kind_equally() {
+        let slot = FaultSlot::any(
+            TimeWindow::new(5.0, 9.0),
+            &[FaultKind::LooseBolts, FaultKind::HullBreach],
+            TimeWindow::at(60.0),
+        );
+        assert!(slot.can_be(FaultKind::HullBreach));
+        assert!(!slot.can_be(FaultKind::TrajectoryDrift));
+        assert!(!slot.is_pinned());
+        assert!(
+            slot.choices
+                .iter()
+                .all(|c| c.weight == 1.0 && c.site.is_none())
+        );
     }
 
     #[test]
@@ -362,7 +452,6 @@ mod tests {
     #[test]
     fn validation_reports_every_problem() {
         let mut level = random_level();
-        level.duration_secs = 25.0;
         level.slots[0].clock = TimeWindow::new(30.0, 80.0);
         level.slots[1].choices = vec![Choice {
             weight: 0.0,
@@ -370,11 +459,29 @@ mod tests {
             site: Some(Site::Helm),
         }];
         let errors = level.validate().unwrap_err();
-        assert!(errors.contains(&LevelError::Duration(25.0)));
         assert!(errors.contains(&LevelError::Clock { slot: 0 }));
         assert!(errors.contains(&LevelError::Weight { slot: 1 }));
         assert!(errors.contains(&LevelError::SiteKind { slot: 1 }));
+        level.slots[1].window = TimeWindow::new(90.0, 60.0);
+        let errors = level.validate().unwrap_err();
         assert!(errors.contains(&LevelError::Window { slot: 1 }));
+        level.slots.clear();
+        assert_eq!(level.validate().unwrap_err(), vec![LevelError::NoFaults]);
+    }
+
+    #[test]
+    fn every_flight_is_over_within_three_minutes() {
+        let mut level = random_level();
+        // Slot 1 starts by 90 s and takes 20 s at most.
+        assert_eq!(level.worst_case_secs(), 110.0);
+        level.slots[1].window = TimeWindow::new(150.0, 160.0);
+        assert_eq!(level.worst_case_secs(), MAX_FLIGHT_SECS);
+        assert!(level.validate().is_ok());
+        level.slots[1].window = TimeWindow::new(150.0, 161.0);
+        assert_eq!(
+            level.validate().unwrap_err(),
+            vec![LevelError::Late { slot: 1 }]
+        );
     }
 
     #[test]
@@ -390,6 +497,25 @@ mod tests {
             level.validate().unwrap_err(),
             vec![LevelError::Envelope { worst: 2, max: 1 }]
         );
+    }
+
+    #[test]
+    fn pools_must_survive_the_worst_roll() {
+        let breach = |at: f32| FaultSlot::pinned(at, Site::HullPortAft, 60.0);
+        let mut level = LevelDef {
+            slots: vec![breach(10.0), breach(100.0)],
+            ..random_level()
+        };
+        // Each breach spends 20 / 60 of the air, with time to refill between.
+        assert!((level.worst_case_strain(FaultKind::HullBreach) - 1.0 / 3.0).abs() < 1e-5);
+        assert_eq!(level.worst_case_strain(FaultKind::LooseBolts), 0.0);
+        assert!(level.validate().is_ok());
+        // Four breaches back to back, no time to refill: well past empty.
+        level.slots = vec![breach(10.0), breach(20.0), breach(30.0), breach(40.0)];
+        assert!(level.worst_case_strain(FaultKind::HullBreach) >= 1.0);
+        assert!(level.validate().unwrap_err().contains(&LevelError::Pool {
+            kind: FaultKind::HullBreach
+        }));
     }
 
     #[test]

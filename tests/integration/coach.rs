@@ -148,7 +148,7 @@ fn each_kind_of_fault_gets_a_tip_the_first_time_only() {
     do_the_preflight_check(&mut app);
     let mut known: Vec<Entity> = Vec::new();
     let mut starts: Vec<(f32, FaultKind, Vec<String>)> = Vec::new();
-    run_until(&mut app, secs(200.0), |app| {
+    run_until(&mut app, secs(140.0), |app| {
         let mut new = Vec::new();
         let mut q = app.world_mut().query::<(Entity, &mut Fault)>();
         for (entity, mut fault) in q.iter_mut(app.world_mut()) {
@@ -164,10 +164,10 @@ fn each_kind_of_fault_gets_a_tip_the_first_time_only() {
             let lines = panel(app);
             starts.push((elapsed(app), kind, lines));
         }
-        elapsed(app) >= 190.0
+        elapsed(app) >= 130.0
     });
     assert_eq!(state(&app), AppState::Playing);
-    assert_eq!(starts.len(), 10, "{starts:?}");
+    assert_eq!(starts.len(), 4, "{starts:?}");
     let tip = |kind| vec![Tip::for_fault(kind).text().to_string()];
     for (at, kind, lines) in &starts[..3] {
         assert_eq!(*lines, tip(*kind), "first {kind:?} at {at}");

@@ -166,7 +166,7 @@ test('diagnostics: E at the console pinpoints every fault', async ({ page }, tes
     await waitForState(page, (s) => s.diag === 'Scanning');
     const open = await waitForState(page, (s) => s.diag === 'Open');
     expect(open.diagUses).toBe(1);
-    await attachShot(page, testInfo, 'diagnostics: minimap of the five rooms stacked top to bottom, three red markers on the left engine, one on the airlock left wall, cyan dot for the engineer in the quarters, list of two faults with seconds left');
+    await attachShot(page, testInfo, 'diagnostics: minimap of the nine rooms (two thin corridors with rooms either side), three red markers on the left engine, one on the airlock left wall, cyan dot for the engineer in the quarters, list of two faults with seconds left');
     await page.keyboard.press('e');
     await waitForState(page, (s) => s.diag === 'Closed');
     expect(errors).toEqual([]);

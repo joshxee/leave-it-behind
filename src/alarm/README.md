@@ -1,10 +1,11 @@
 # alarm
 
-Ambient cues: the only warning outside the diagnostic screen. They say something is wrong and how urgent it is, never where.
+Ambient cues: they say something is wrong and how urgent it is, never what or where (the HUD's vitals panel says what, the diagnostic screen where).
 
 - A jolt of screen shake (`JOLT_SECS`) when any fault starts.
-- A pulsing red full-screen tint while any fault is active, deeper and faster as the most urgent fault's clock runs down (`MIN_TINT` → `MAX_TINT`).
-- Growing shake over the last half of the most urgent fault's clock (`CRITICAL_SHAKE`).
+- A pulsing red full-screen tint while any fault is active, deeper and faster as the most urgent fault nears failure (`MIN_TINT` → `MAX_TINT`). Urgency is `Vitals::urgency`: the oxygen or heat pool a breach or loose bolts drain, the drift's own clock.
+- Growing shake over the last half of the way to the most urgent failure (`CRITICAL_SHAKE`).
+- The HUD's vitals panel (`ui`) says which system is failing; the alarm only says that one is.
 - The screen shake and alarm flashing settings scale the shake and the pulse. With flashing at 0 the tint holds steady but still deepens with urgency.
 - Frozen while paused (`not_paused`).
 

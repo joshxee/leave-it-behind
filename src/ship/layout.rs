@@ -192,11 +192,19 @@ mod tests {
 
     const R: f32 = 14.0;
 
-    /// The path through every door, front to tail: the helm seat, each door
-    /// in order of distance from it, then just inside the locked hatch.
+    /// The path through every door on the spine, front to tail: the helm
+    /// seat, each door in a wall across the ship (like the hatch's) in order
+    /// of distance from it, then just inside the locked hatch. Side doors
+    /// into the rooms beside the corridors are off it.
     fn spine() -> Vec<Vec2> {
         let seat = helm_seat();
+        let hatch = ship()
+            .doors()
+            .into_iter()
+            .find(|d| d.locked)
+            .expect("a hatch");
         let mut doors = ship().doors();
+        doors.retain(|d| d.across_x == hatch.across_x);
         doors.sort_by(|a, b| a.center.distance(seat).total_cmp(&b.center.distance(seat)));
         let mut points = vec![seat];
         for door in &doors {
@@ -281,8 +289,8 @@ mod tests {
     #[test]
     fn there_is_room_to_walk_round_the_engines() {
         let colliders = colliders();
-        let room = RoomId::Engine.interior();
         for engine in [port_engine(), starboard_engine()] {
+            let room = RoomId::at(engine.center()).interior();
             let c = engine.center();
             for p in [
                 Vec2::new(c.x, (engine.max.y + room.max.y) / 2.0),
@@ -309,7 +317,10 @@ mod tests {
     fn a_reach_into_the_hull_never_touches_its_outside() {
         let walls = walls();
         // Breach points sit on hull walls: space is on the far side.
-        for mark in ('1'..='9').filter_map(|m| ship().wall_mark(m)) {
+        for mark in crate::ship::map::BREACH_MARKS
+            .into_iter()
+            .filter_map(|m| ship().wall_mark(m))
+        {
             let from = mark.point + mark.normal * (R + 10.0);
             let along = mark.normal.perp();
             // Past the wall's centre line (nearer the outside), and through it.

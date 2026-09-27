@@ -1,18 +1,19 @@
 import { expect, test } from '@playwright/test';
 import { attachShot, averageColor, collectErrors, gameState, openGame, waitForState } from './helpers';
 
-test('the countdown reaching zero lands the ship; R flies again', async ({ page }, testInfo) => {
+test('fixing every fault lands the ship; R flies again', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
   try {
     await openGame(page, { scenario: 'landing' });
     const start = await gameState(page);
-    expect(start.journey.remaining).toBeLessThan(3.5);
+    expect(start.stats.total).toBeGreaterThan(0);
+    expect(start.stats.fixed).toBe(start.stats.total);
     await waitForState(page, (s) => s.state === 'Landed');
-    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, FLY AGAIN (R) highlighted and MAIN MENU rows, timer reads LANDED');
+    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, CONTINUE highlighted, FLY AGAIN (R) and MAIN MENU rows, top of the HUD reads LANDED');
     await page.keyboard.press('r');
     await waitForState(page, (s) => s.menu?.screen === 'Story');
     await page.keyboard.press('Enter');
-    // The landing scenario applies again to the new run: 3 s from arrival.
+    // The landing scenario applies again to the new run: every fault fixed.
     const again = await waitForState(page, (s) => s.state === 'Playing');
     expect(again.player.x).toBeCloseTo(start.player.x, 0);
     expect(again.player.y).toBeCloseTo(start.player.y, 0);
@@ -31,7 +32,7 @@ test('an unfixed breach vents the oxygen and ends the run', async ({ page }, tes
     expect(lost.stats.failure).toBe('HullBreach');
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'lost: red-tinted screen, OXYGEN DEPLETED title, survival time and damage lines, NEW BEST, FLY AGAIN (R) and MAIN MENU rows');
+    await attachShot(page, testInfo, 'lost: red-tinted screen, OXYGEN DEPLETED title, survival time with faults fixed of the total and damage lines, NEW BEST, FLY AGAIN (R) and MAIN MENU rows');
   }
 });
 

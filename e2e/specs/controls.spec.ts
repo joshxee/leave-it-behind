@@ -8,14 +8,14 @@ test('WASD walks the engineer, doors slide open, the camera cuts room to room', 
     const start = await gameState(page);
     expect(start.room).toBe('Quarters');
 
-    // Onto the conduit that runs through every door, then forward.
+    // Through the quarters' side door onto the conduit in the corridor, then forward.
     await page.keyboard.down('d');
     await waitForState(page, (s) => s.player.x >= -6);
     await page.keyboard.up('d');
     await page.keyboard.down('w');
     const walking = await waitForState(page, (s) => s.player.walking && s.doors.some((d) => d.frame > 0));
     expect(walking.player.pose).toBe('wrench_walk');
-    await attachShot(page, testInfo, 'walking: engineer walking up the conduit with the wrench held out ahead, the sliding door above sliding open');
+    await attachShot(page, testInfo, 'walking: engineer walking up the thin corridor conduit with the wrench held out ahead, a sliding door opening');
     const cockpit = await waitForState(page, (s) => s.room === 'Cockpit');
     await page.keyboard.up('w');
     expect(cockpit.player.y).toBeGreaterThan(start.player.y);
@@ -23,13 +23,13 @@ test('WASD walks the engineer, doors slide open, the camera cuts room to room', 
     await attachShot(page, testInfo, 'cockpit: window and consoles along the top wall, pilot seat with a cyan joystick, blue nav display (marker centred) below it, engineer just inside the bottom door, no other room visible');
 
     await page.keyboard.down('s');
-    await waitForState(page, (s) => s.room === 'Engine');
+    await waitForState(page, (s) => s.room === 'Hull');
     await page.keyboard.up('s');
     const idle = await waitForState(page, (s) => !s.player.walking);
     expect(idle.player.pose).toBe('wrench_hold');
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'engine-room: two dark engine blocks left and right of the conduit with grey bolts on their long sides, grated floor, engineer near the top door');
+    await attachShot(page, testInfo, 'main-hull: cargo crates either side of the conduit, engineer near the top door');
   }
 });
 

@@ -31,6 +31,7 @@ export type BevyState = {
       | 'Settings'
       | 'Pause'
       | 'End'
+      | 'Upgrade'
       | 'ConfirmRestart'
       | 'ConfirmMainMenu'
       | 'ConfirmQuit'
@@ -51,8 +52,12 @@ export type BevyState = {
     fullscreen: boolean;
     vsync: boolean;
   };
-  /** Level one's saved progress. */
+  /** The current level's saved progress. */
   progress: { flights: number; landings: number; best: RunRecord | null };
+  /** The level being flown: `number` is its place in the campaign (1 to 5). */
+  level: { id: string; number: number; name: string };
+  /** Times each upgrade has been picked this campaign. */
+  upgrades: { runFaster: number; fasterWrench: number; widerTape: number };
   lastRun: { record: RunRecord; newBest: boolean } | null;
   notice: string | null;
   tick: number;
@@ -81,8 +86,11 @@ export type BevyState = {
   /** Where tape goes on this tick: the wall point and its face's normal (out of the wall), or null. */
   tapeContact: { x: number; y: number; nx: number; ny: number } | null;
   strips: number;
-  /** `launched` is false while level one's pre-flight check holds the countdown. */
-  journey: { elapsed: number; remaining: number; duration: number; launched: boolean };
+  /**
+   * `launched` is false while level one's pre-flight check holds the fault schedule.
+   * `cleared` once every fault is fixed: the ship lands 3 s later.
+   */
+  journey: { elapsed: number; launched: boolean; cleared: boolean };
   /** The coaching panel's lines, top to bottom (empty when hidden). */
   coach: { active: boolean; lines: string[] };
   /** Where the diagnostic console is worked from (its front edge). */
@@ -95,7 +103,13 @@ export type BevyState = {
   diag: 'Closed' | 'Scanning' | 'Open';
   diagUses: number;
   alarm: { level: number; active: number; jolt: number };
-  stats: { started: number; fixed: number; failure: FaultState['kind'] | null; damage: Damage };
+  /**
+   * Oxygen left (1 full, 0 depleted), engine heat (0 cool, 1 overheated), and
+   * what the HUD's vitals panel says: O2, HEAT, then the course.
+   */
+  vitals: { oxygen: number; heat: number; gauges: { label: string; value: string; alert: boolean }[] };
+  /** `total`: faults the flight must fix to land (started and still to come). */
+  stats: { started: number; fixed: number; total: number; failure: FaultState['kind'] | null; damage: Damage };
   entities: { players: number; faults: number; tapeStrips: number };
 };
 

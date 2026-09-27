@@ -5,18 +5,22 @@
 //! one is all it takes to start it; each kind's module reacts to
 //! `Added<Fault>` (loosening bolts, opening the breach, starting the drift).
 //! [`resolve_faults`] despawns repaired faults ([`FaultFixed`]) and reports
-//! expired ones ([`FaultFailed`]). The three kinds have independent clocks.
+//! fatal ones ([`FaultFailed`]). Breaches and loose bolts drain the ship's
+//! [`Vitals`] (oxygen, engine heat) and are fatal when their pool is spent;
+//! trajectory drift is fatal when its own clock runs out.
 
 pub mod bolts;
 pub mod breach;
 pub mod drift;
 pub mod sites;
+pub mod vitals;
 
 use bevy::prelude::*;
 
 pub use sites::Site;
+pub use vitals::{Pool, Vitals};
 
-use crate::{GameSet, RunEntity, running};
+use crate::{AppState, GameSet, RunEntity, RunSet, running};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaultKind {
@@ -68,6 +72,12 @@ impl FaultKind {
         }
     }
 
+    /// Whether this kind drains a [`Vitals`] pool (oxygen, engine heat)
+    /// instead of failing on its own clock.
+    pub fn pooled(self) -> bool {
+        self != FaultKind::TrajectoryDrift
+    }
+
     /// Failure clock range in seconds when a level does not pin it.
     pub fn clock_range(self) -> (f32, f32) {
         match self {
@@ -87,14 +97,15 @@ impl FaultKind {
 }
 
 /// Shortest and longest failure clock any fault may have, in seconds.
-pub const CLOCK_LIMITS: (f32, f32) = (55.0, 90.0);
+pub const CLOCK_LIMITS: (f32, f32) = (45.0, 90.0);
 
 /// An active fault.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 #[require(RunEntity, Transform, Visibility)]
 pub struct Fault {
     pub site: Site,
-    /// Seconds from the fault starting to it becoming fatal.
+    /// Seconds from the fault starting to it becoming fatal. For a pooled
+    /// kind, the seconds it alone takes to spend a full pool.
     pub clock: f32,
     /// Seconds since the fault started.
     pub elapsed: f32,
@@ -116,11 +127,14 @@ impl Fault {
         self.site.kind()
     }
 
+    /// Seconds left on the clock. For a pooled kind, see
+    /// [`Vitals::time_left`].
     pub fn remaining(&self) -> f32 {
         (self.clock - self.elapsed).max(0.0)
     }
 
-    /// How close to failing, 0 (just started) to 1 (fatal).
+    /// How far along the clock, 0 (just started) to 1 (fatal). For a pooled
+    /// kind, see [`Vitals::urgency`].
     pub fn urgency(&self) -> f32 {
         (self.elapsed / self.clock).clamp(0.0, 1.0)
     }
@@ -129,8 +143,19 @@ impl Fault {
         self.repair >= 1.0
     }
 
+    /// Whether the clock ran out. Pooled kinds fail with their pool instead.
     pub fn has_failed(&self) -> bool {
-        !self.is_repaired() && self.elapsed >= self.clock
+        !self.kind().pooled() && !self.is_repaired() && self.elapsed >= self.clock
+    }
+
+    /// Pool spent per second: less as the repair goes on (each tight bolt,
+    /// each second of tape), none for a kind with no pool.
+    pub fn drain(&self) -> f32 {
+        if self.kind().pooled() {
+            (1.0 - self.repair).max(0.0) / self.clock
+        } else {
+            0.0
+        }
     }
 }
 
@@ -161,10 +186,18 @@ impl Plugin for FaultsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<FaultFixed>()
             .add_message::<FaultFailed>()
+            .init_resource::<Vitals>()
             .add_plugins((bolts::BoltsPlugin, breach::BreachPlugin, drift::DriftPlugin))
             .add_systems(
+                OnEnter(AppState::Playing),
+                vitals::reset.in_set(RunSet::Spawn),
+            )
+            .add_systems(
                 FixedUpdate,
-                tick_fault_clocks.in_set(GameSet::Simulate).run_if(running),
+                (tick_fault_clocks, vitals::drain_vitals)
+                    .chain()
+                    .in_set(GameSet::Simulate)
+                    .run_if(running),
             )
             .add_systems(
                 FixedUpdate,
@@ -179,11 +212,13 @@ fn tick_fault_clocks(time: Res<Time>, mut faults: Query<&mut Fault>) {
     }
 }
 
-/// Repaired faults are despawned and reported; expired ones are reported
-/// (the level turns that into a loss). A repair on the last tick counts.
+/// Repaired faults are despawned and reported; fatal ones are reported (the
+/// level turns that into a loss). A spent pool is blamed on the longest
+/// running fault draining it. A repair on the last tick counts.
 pub fn resolve_faults(
     mut commands: Commands,
     faults: Query<(Entity, &Fault)>,
+    vitals: Res<Vitals>,
     mut fixed: MessageWriter<FaultFixed>,
     mut failed: MessageWriter<FaultFailed>,
 ) {
@@ -195,6 +230,19 @@ pub fn resolve_faults(
             });
             commands.entity(entity).despawn();
         } else if fault.has_failed() {
+            failed.write(FaultFailed { site: fault.site });
+        }
+    }
+    for kind in FaultKind::ALL {
+        if !vitals.pool(kind).is_some_and(Pool::is_spent) {
+            continue;
+        }
+        let oldest = faults
+            .iter()
+            .map(|(_, f)| f)
+            .filter(|f| f.kind() == kind && !f.is_repaired())
+            .max_by(|a, b| a.elapsed.total_cmp(&b.elapsed));
+        if let Some(fault) = oldest {
             failed.write(FaultFailed { site: fault.site });
         }
     }
@@ -213,6 +261,17 @@ mod tests {
                 "{kind:?}"
             );
         }
+    }
+
+    #[test]
+    fn pooled_kinds_never_fail_on_their_own_clock() {
+        let mut breach = Fault::new(Site::HullPortAft, 40.0);
+        breach.elapsed = 99.0;
+        assert!(!breach.has_failed());
+        assert_eq!(breach.drain(), 1.0 / 40.0);
+        breach.repair = 0.5;
+        assert_eq!(breach.drain(), 0.5 / 40.0);
+        assert_eq!(Fault::new(Site::Helm, 40.0).drain(), 0.0);
     }
 
     #[test]

@@ -36,8 +36,8 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     expect(s.player.pose).toBe('wrench_hold');
     expect(s.doors.length).toBe(4);
     expect(s.doors.every((d) => d.frame === 0)).toBe(true);
-    expect(s.journey.duration).toBe(270);
-    expect(s.journey.remaining).toBeGreaterThan(200);
+    expect(s.journey.cleared).toBe(false);
+    expect(s.stats).toMatchObject({ started: 0, fixed: 0, total: 4 });
     // A first-time player's flight waits for the pre-flight check (coach.spec.ts).
     expect(s.journey.launched).toBe(false);
     expect(s.faults).toEqual([]);
@@ -47,7 +47,7 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     await attachShot(
       page,
       testInfo,
-      "boot: tiled quarters, engineer holding the wrench, dark console top left, ARRIVAL IN 4:30 over the pre-flight check panel (hiding the top door), closed bottom door, belt [1] WRENCH [2] TAPE 20s",
+      "boot: tiled quarters, engineer holding the wrench, dark console top left, REPAIRS 0 OF 4 over the pre-flight check panel (hiding the top door), closed bottom door, belt [1] WRENCH [2] TAPE 20s",
     );
   }
 });

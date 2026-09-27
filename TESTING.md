@@ -108,7 +108,7 @@ exist). The same scenario is used by native tests (`test_app_with`), the web
 build (`?scenario=<name>`), native e2e runs (`SCENARIO=<name> cargo run --features e2e`),
 and `node e2e/tools/capture.mjs --scenario <name>`. Current ones: `default`, `quiet`,
 `bolts`, `breach`, `drift`, `diagnostics`, `scramble`, `landing`, `breach_critical`,
-`tape_low`, `paused`, `settings`, `first_flight`, `first_bolts` (see `src/scenarios/README.md`).
+`tape_low`, `paused`, `settings`, `first_flight`, `first_bolts`, `level_five`, `final_landing` (see `src/scenarios/README.md`).
 Any scenario skips the title screen; without one the game boots to the title, as players see it.
 Scenarios also skip level one's coaching, except `first_flight` and `first_bolts`. A flight
 started from the title with fresh saves (native `test_app()`, or any e2e test, which gets a fresh

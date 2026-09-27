@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::art::Art;
 use crate::art::tiles::Tile;
 use crate::faults::bolts::Bolt;
-use crate::faults::{Fault, FaultKind};
+use crate::faults::{Fault, FaultKind, Vitals};
 use crate::player::{Focus, InteractKind, InteractPressed, Interactable, Player};
 use crate::settings::Settings;
 use crate::shapes::at;
@@ -61,6 +61,7 @@ pub struct Reading {
     pub kind: FaultKind,
     pub room: RoomId,
     pub label: String,
+    /// Seconds until it fails at the current rate ([`Vitals::time_left`]).
     pub remaining: f32,
     /// Exact positions (every loose bolt of a panel, the breach, the helm).
     pub points: Vec<Vec2>,
@@ -70,6 +71,7 @@ pub struct Reading {
 pub fn readings<'a>(
     faults: impl IntoIterator<Item = &'a Fault>,
     loose_bolts: &[Bolt],
+    vitals: &Vitals,
 ) -> Vec<Reading> {
     let mut out: Vec<Reading> = faults
         .into_iter()
@@ -86,7 +88,7 @@ pub fn readings<'a>(
                 kind: f.kind(),
                 room: f.site.room(),
                 label: f.site.label(),
-                remaining: f.remaining(),
+                remaining: vitals.time_left(f),
                 points,
             }
         })
@@ -115,6 +117,20 @@ fn map_frame() -> (Rect, f32) {
         .expect("rooms");
     let scale = (MAP_MAX.x / hull.width()).min(MAP_MAX.y / hull.height());
     (hull, scale)
+}
+
+/// A room's name on the minimap: short enough for its box. The thin
+/// corridors are left blank.
+fn map_label(room: RoomId) -> &'static str {
+    match room {
+        RoomId::Cockpit => "COCKPIT",
+        RoomId::Quarters => "QUARTERS",
+        RoomId::GunRoom => "GUNS",
+        RoomId::Hull => "HULL",
+        RoomId::PortEngine | RoomId::StarboardEngine => "ENGINE",
+        RoomId::Airlock => "AIRLOCK",
+        RoomId::ForeCorridor | RoomId::AftCorridor => "",
+    }
 }
 
 /// World position to minimap pixels (origin top left).
@@ -322,7 +338,7 @@ fn spawn_overlay(mut commands: Commands) {
             },
             BackgroundColor(palette::MAP_ROOM),
             ChildOf(map),
-            children![text(room.as_str().to_uppercase(), 11.0, palette::UI_DIM)],
+            children![text(map_label(room), 11.0, palette::UI_DIM)],
         ));
     }
     commands.spawn((
@@ -355,6 +371,7 @@ fn draw_overlay(
     diag: Res<Diagnostics>,
     time: Res<Time>,
     faults: Query<&Fault>,
+    vitals: Res<Vitals>,
     bolts: Query<&Bolt>,
     players: Query<&Transform, With<Player>>,
     mut overlay: Query<&mut Visibility, With<DiagOverlay>>,
@@ -392,7 +409,7 @@ fn draw_overlay(
         }
         _ => {
             let bolts: Vec<Bolt> = bolts.iter().copied().collect();
-            let readings = readings(faults, &bolts);
+            let readings = readings(faults, &bolts, &vitals);
             let Ok(map) = map.single() else {
                 return;
             };
@@ -481,11 +498,15 @@ mod tests {
                 loose: true,
             },
         ];
-        let r = readings([&bolts_fault, &breach], &bolts);
+        // The pools as those clocks would have left them.
+        let mut vitals = Vitals::default();
+        vitals.heat.spent = 10.0 / 50.0;
+        vitals.oxygen.spent = 30.0 / 45.0;
+        let r = readings([&bolts_fault, &breach], &bolts, &vitals);
         assert_eq!(r[0].kind, FaultKind::HullBreach, "15s left beats 40s left");
         assert_eq!(r[0].points, vec![Site::AirlockPortAft.pos()]);
         assert_eq!(r[1].points, vec![panel[0]]);
-        assert_eq!(r[1].room, RoomId::Engine);
+        assert_eq!(r[1].room, RoomId::PortEngine);
         assert_eq!(
             reading_line(&r[0]),
             format!(

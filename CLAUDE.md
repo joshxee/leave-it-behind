@@ -14,14 +14,16 @@
 ## Architecture
 
 - `src/main.rs` only adds `DefaultPlugins` + `GamePlugin`. All game code is in the library (`src/lib.rs`).
-- The game: level one of a top-down ship-repair time-management game. Design and tuning
+- The game: a five-level campaign of a top-down ship-repair time-management game (`level/campaign.rs`). Design and tuning
   live in the feature READMEs (start with `src/level/README.md` and `src/faults/README.md`).
 - The ship is data: the ASCII map `SHIP` in `src/ship/map.rs` (legend and rules in its docs,
   `src/ship/README.md`). Rooms, walls, doors, colliders and fault sites are all derived from it.
 - One plugin per feature module, each with a `README.md`: `ship/`, `player/`, `tools/`,
   `faults/`, `level/`, `diagnostics/`, `alarm/`, `ui/`, `menu/`, `settings/`, `save/`, `scenarios/`,
-  `coach/` (level one's first-flight coaching: pre-flight check, one tip per fault kind, TIPS setting).
-- Flow: `Boot` → `Menu` (title, main menu; `src/menu/README.md`) → `Playing` → `Landed`/`Lost`.
+  `coach/` (level one's first-flight coaching: pre-flight check, one tip per fault kind, TIPS setting),
+  `upgrades/` (the pick of three between levels: run faster, faster wrench, wider tape).
+- Flow: `Boot` → `Menu` (title, main menu; `src/menu/README.md`) → `Playing` → `Landed`/`Lost`;
+  a landing continues through the upgrade screen to the next level.
   Pausing is the `Pause` sub-state of `Playing`, so it never restarts the run.
 - Infrastructure: `state.rs` (`AppState`, `Pause`, `running`/`not_paused`, `GameSet` order, `RunSet`,
   `RunEntity`), `rng.rs` (`GameRng`),
@@ -109,7 +111,7 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
   resources and a fake `Window`. Asset-dependent plugins skip themselves without `AssetServer`.
 - In a frame, `FixedUpdate` runs before `Update`, so input read in `Update` applies next frame.
 - wasm is single-threaded: no blocking, no `std::thread`, no `std::time::Instant` (use `bevy::platform::time`).
-- Browsers block audio until the user interacts with the page (the game has no sound yet).
+- Browsers block audio until the user interacts with the page; the title menu provides that interaction before the flight's sound cues.
 - Aiming converts the cursor with the room camera's `anchor`: after teleporting the player in a
   test, run a frame before `aim_at` so the camera has cut to the new room.
 - Don't enable `dynamic_linking` on wasm.

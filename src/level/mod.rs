@@ -1,50 +1,75 @@
-//! The flight: the countdown to arrival, the fault schedule of the current
-//! level, the damage the faults do, and the outcome (landing, or a fault's
-//! clock running out). A finished flight is recorded in [`Progress`].
+//! The flight: the fault schedule of the current level, the damage the
+//! faults do, and the outcome (landing once every fault is fixed, or a
+//! fault's clock running out). A finished flight is recorded in
+//! [`Progress`]. The five levels are flown in order ([`campaign`]).
 
+pub mod campaign;
 pub mod def;
 pub mod one;
 pub mod progress;
 
 use bevy::prelude::*;
 
-pub use def::{Choice, Envelope, FaultSlot, LevelDef, PlannedFault, TimeWindow};
+pub use campaign::{LEVEL_COUNT, LEVEL_IDS, campaign, next_after, number_of};
+pub use def::{Choice, Envelope, FaultSlot, LevelDef, MAX_FLIGHT_SECS, PlannedFault, TimeWindow};
 pub use one::level_one;
 pub use progress::{Damage, LastRun, LevelProgress, Progress, RunRecord};
 
 use crate::faults::{Fault, FaultFailed, FaultFixed, Site, fault_bundle, resolve_faults};
 use crate::{AppState, GameRng, GameSet, RunSet, running};
 
-/// The level being flown.
+/// The level being flown. Level one until the campaign moves on (`menu`).
 #[derive(Resource, Debug, Clone)]
 pub struct CurrentLevel(pub LevelDef);
 
-/// Time since launch. The HUD counts `remaining` down to the landing.
+impl CurrentLevel {
+    /// Where this level comes in the campaign (1-based; 0 for a level
+    /// outside it, as tests may fly).
+    pub fn number(&self) -> usize {
+        number_of(&self.0.id).unwrap_or(0)
+    }
+
+    /// The level flown after this one, if any.
+    pub fn next(&self) -> Option<LevelDef> {
+        next_after(&self.0.id)
+    }
+}
+
+/// Seconds from the last fault's fix to touchdown: the final approach, with
+/// nothing left to break.
+pub const TOUCHDOWN_SECS: f32 = 3.0;
+
+/// Time since launch. The flight has no set length: it lands
+/// [`TOUCHDOWN_SECS`] after the last of its faults is fixed.
 #[derive(Resource, Debug, Clone, Copy, PartialEq)]
 pub struct Journey {
-    pub duration: f32,
     pub elapsed: f32,
-    /// Until launch the countdown and the fault schedule wait. A flight
-    /// launches straight away unless level one's pre-flight check holds it
-    /// (see `coach`).
+    /// Until launch the fault schedule waits. A flight launches straight
+    /// away unless level one's pre-flight check holds it (see `coach`).
     pub launched: bool,
+    /// When the last fault was fixed (seconds after launch), once it is.
+    pub cleared_at: Option<f32>,
+}
+
+impl Default for Journey {
+    fn default() -> Self {
+        Self {
+            elapsed: 0.0,
+            launched: true,
+            cleared_at: None,
+        }
+    }
 }
 
 impl Journey {
-    pub fn new(duration: f32) -> Self {
-        Self {
-            duration,
-            elapsed: 0.0,
-            launched: true,
-        }
-    }
-
-    pub fn remaining(&self) -> f32 {
-        (self.duration - self.elapsed).max(0.0)
+    /// Every fault fixed: the ship is on its final approach.
+    pub fn cleared(&self) -> bool {
+        self.cleared_at.is_some()
     }
 
     pub fn arrived(&self) -> bool {
-        self.elapsed >= self.duration
+        self.cleared_at
+            .is_some_and(|at| self.elapsed >= at + TOUCHDOWN_SECS)
     }
 }
 
@@ -53,6 +78,13 @@ impl Journey {
 #[derive(Resource, Debug, Default, Clone)]
 pub struct FaultPlan {
     pub pending: Vec<PlannedFault>,
+}
+
+impl FaultPlan {
+    /// Faults this flight must fix to land: those started and those to come.
+    pub fn total(&self, stats: &RunStats) -> u32 {
+        stats.started + self.pending.len() as u32
+    }
 }
 
 #[derive(Resource, Debug, Default, Clone, PartialEq)]
@@ -69,9 +101,8 @@ pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
-        let level = level_one();
-        app.insert_resource(Journey::new(level.duration_secs))
-            .insert_resource(CurrentLevel(level))
+        app.init_resource::<Journey>()
+            .insert_resource(CurrentLevel(level_one()))
             .init_resource::<FaultPlan>()
             .init_resource::<RunStats>()
             .init_resource::<Progress>()
@@ -108,7 +139,7 @@ fn start_run(
         *rng = GameRng::from_seed(seed);
     }
     plan.pending = level.0.roll(&mut rng);
-    *journey = Journey::new(level.0.duration_secs);
+    *journey = Journey::default();
     *stats = RunStats::default();
 }
 
@@ -159,9 +190,14 @@ fn count_fixes(mut fixed: MessageReader<FaultFixed>, mut stats: ResMut<RunStats>
     stats.fixed += fixed.read().count() as u32;
 }
 
+/// Lost the moment a fault fails. Once every planned fault has started and
+/// been fixed the flight is cleared, and it lands after the final approach.
+/// A flight whose plan never started a fault (the `quiet` scenario and those
+/// built on it) never lands.
 fn decide_outcome(
     mut failed: MessageReader<FaultFailed>,
-    journey: Res<Journey>,
+    plan: Res<FaultPlan>,
+    mut journey: ResMut<Journey>,
     mut stats: ResMut<RunStats>,
     mut next: ResMut<NextState<AppState>>,
 ) {
@@ -172,7 +208,16 @@ fn decide_outcome(
     if let Some(site) = failure {
         stats.failure = Some(site);
         next.set(AppState::Lost);
-    } else if journey.arrived() {
+        return;
+    }
+    if journey.cleared_at.is_none()
+        && plan.pending.is_empty()
+        && stats.started > 0
+        && stats.fixed >= stats.started
+    {
+        journey.cleared_at = Some(journey.elapsed);
+    }
+    if journey.arrived() {
         next.set(AppState::Landed);
     }
 }
@@ -189,7 +234,7 @@ fn record_run(
     let record = RunRecord {
         landed: *state.get() == AppState::Landed,
         damage: stats.damage,
-        survived: journey.elapsed.min(journey.duration),
+        survived: journey.elapsed,
     };
     let new_best = progress.record(&level.0.id, record);
     *last = LastRun {
@@ -198,7 +243,7 @@ fn record_run(
     };
 }
 
-/// `m:ss`, rounding up so the clock reads 0:00 only on arrival.
+/// `m:ss`, rounding up.
 pub fn format_clock(secs: f32) -> String {
     let total = secs.max(0.0).ceil() as u32;
     format!("{}:{:02}", total / 60, total % 60)
@@ -219,14 +264,27 @@ mod tests {
     }
 
     #[test]
-    fn journey_counts_down() {
-        let mut j = Journey::new(10.0);
-        j.elapsed = 4.0;
-        assert_eq!(j.remaining(), 6.0);
-        assert!(!j.arrived());
-        j.elapsed = 10.0;
+    fn the_journey_lands_after_the_final_approach() {
+        let mut j = Journey::default();
+        assert!(j.launched, "flights launch unless held");
+        j.elapsed = 500.0;
+        assert!(!j.cleared() && !j.arrived(), "no set length");
+        j.cleared_at = Some(40.0);
+        j.elapsed = 40.0 + TOUCHDOWN_SECS - 0.1;
+        assert!(j.cleared() && !j.arrived());
+        j.elapsed = 40.0 + TOUCHDOWN_SECS;
         assert!(j.arrived());
-        assert_eq!(j.remaining(), 0.0);
-        assert!(Journey::new(10.0).launched, "flights launch unless held");
+    }
+
+    #[test]
+    fn the_plan_total_counts_started_and_pending() {
+        let plan = FaultPlan {
+            pending: level_one().roll(&mut GameRng::from_seed(0)),
+        };
+        let stats = RunStats {
+            started: 2,
+            ..default()
+        };
+        assert_eq!(plan.total(&stats), 6);
     }
 }

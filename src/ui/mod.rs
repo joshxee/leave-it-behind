@@ -1,4 +1,7 @@
-//! HUD: the countdown to arrival (top), the current room (top left), the
+//! HUD: the repairs count (top: faults fixed of the flight's total; a flight
+//! lands once they all are), the current room (top left), the
+//! level (under the room), the ship's vitals (top right: oxygen, engine
+//! heat, time to impact), the
 //! tool belt and a context prompt (bottom), and a controls hint at launch.
 //! Shown during a flight and behind the end screen, hidden on the menus.
 //! It never shows where a fault is: that is the diagnostic screen's job.
@@ -7,18 +10,22 @@
 //! Uses the bundled Super Indie font when an `AssetServer` exists; headless
 //! tests fall back to the default font.
 
+mod vitals;
+
 use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
 use crate::diagnostics::{DiagView, Diagnostics};
 use crate::faults::drift::Nav;
-use crate::level::{Journey, format_clock};
+use crate::level::{CurrentLevel, FaultPlan, Journey, LEVEL_COUNT, RunStats};
 use crate::player::{Focus, InteractKind};
 use crate::settings::Settings;
 use crate::ship::CurrentRoom;
 use crate::tools::{Tool, ToolBelt, ToolState};
 use crate::{AppState, GameSet, palette};
+
+pub use vitals::{Gauge, GaugeFill, GaugeLabel, GaugeReading, GaugeValue, gauge};
 
 pub const FONT_PATH: &str = "fonts/super-indie-font/SuperIndie-GOp7O.ttf";
 /// The controls hint shows for this long after launch.
@@ -31,10 +38,13 @@ pub const NOTICE_SECS: f32 = 4.0;
 const NOTICE_Z: i32 = 60;
 
 #[derive(Component, Debug)]
-pub struct TimerText;
+pub struct RepairsText;
 
 #[derive(Component, Debug)]
 pub struct RoomText;
+
+#[derive(Component, Debug)]
+pub struct LevelText;
 
 #[derive(Component, Debug)]
 pub struct PromptText;
@@ -95,11 +105,18 @@ impl Plugin for UiPlugin {
         app.init_resource::<Notices>()
             .add_systems(
                 Startup,
-                (spawn_hud, spawn_notice_line).in_set(GameSet::Input),
+                (spawn_hud, vitals::spawn_vitals, spawn_notice_line).in_set(GameSet::Input),
             )
             .add_systems(
                 Update,
-                (show_hud, update_hud, update_prompt, show_notices).in_set(GameSet::Present),
+                (
+                    show_hud,
+                    update_hud,
+                    vitals::update_vitals,
+                    update_prompt,
+                    show_notices,
+                )
+                    .in_set(GameSet::Present),
             );
     }
 }
@@ -113,8 +130,33 @@ pub fn game_font(asset_server: Option<&AssetServer>, size: f32) -> TextFont {
     font
 }
 
-pub fn timer_label(remaining: f32) -> String {
-    format!("ARRIVAL IN {}", format_clock(remaining))
+/// "LEVEL 2 OF 5", or the level's own name outside the campaign (`number` 0).
+pub fn level_label(number: usize, name: &str) -> String {
+    if number == 0 {
+        name.to_uppercase()
+    } else {
+        format!("LEVEL {number} OF {LEVEL_COUNT}")
+    }
+}
+
+/// "REPAIRS 3 OF 7": faults fixed of the flight's total. Empty for a flight
+/// with nothing planned (the quiet scenarios).
+pub fn repairs_label(fixed: u32, total: u32) -> String {
+    if total == 0 {
+        String::new()
+    } else {
+        format!("REPAIRS {} OF {total}", fixed.min(total))
+    }
+}
+
+/// What the top of the HUD says: the repairs count, then the final
+/// approach once every fault is fixed, then the landing.
+pub fn status_label(state: &AppState, journey: &Journey, fixed: u32, total: u32) -> String {
+    match state {
+        AppState::Landed => "LANDED".into(),
+        _ if journey.cleared() => "ALL FIXED - LANDING".into(),
+        _ => repairs_label(fixed, total),
+    }
 }
 
 pub fn belt_label(tool: Tool, tape_left: f32) -> String {
@@ -167,8 +209,8 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         },
         GlobalZIndex(10),
         children![(
-            TimerText,
-            Text::new(timer_label(0.0)),
+            RepairsText,
+            Text::new(""),
             font(34.0),
             TextColor(palette::UI_TEXT)
         )],
@@ -182,6 +224,21 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         Node {
             position_type: PositionType::Absolute,
             top: px(18),
+            left: px(18),
+            ..default()
+        },
+        GlobalZIndex(10),
+    ));
+    commands.spawn((
+        Hud,
+        LevelText,
+        Text::new(""),
+        font(16.0),
+        TextColor(palette::UI_DIM),
+        Node {
+            position_type: PositionType::Absolute,
+            // Under the room name: the vitals panel has the top right.
+            top: px(44),
             left: px(18),
             ..default()
         },
@@ -314,30 +371,37 @@ fn show_notices(
 
 fn update_hud(
     journey: Res<Journey>,
+    plan: Res<FaultPlan>,
+    stats: Res<RunStats>,
+    level: Res<CurrentLevel>,
     room: Res<CurrentRoom>,
     belt: Res<ToolBelt>,
     settings: Res<Settings>,
     state: Res<State<AppState>>,
     mut texts: ParamSet<(
-        Query<&mut Text, With<TimerText>>,
+        Query<&mut Text, With<RepairsText>>,
         Query<&mut Text, With<RoomText>>,
         Query<(&mut Text, &mut TextColor, &BeltSlot)>,
+        Query<&mut Text, With<LevelText>>,
     )>,
     mut hints: Query<&mut Visibility, With<HintText>>,
 ) {
-    let timer = match state.get() {
-        AppState::Landed => "LANDED".to_string(),
-        _ => timer_label(journey.remaining()),
-    };
+    let status = status_label(state.get(), &journey, stats.fixed, plan.total(&stats));
     for mut t in &mut texts.p0() {
-        if t.0 != timer {
-            t.0 = timer.clone();
+        if t.0 != status {
+            t.0 = status.clone();
         }
     }
     let room_name = room.0.name().to_uppercase();
     for mut t in &mut texts.p1() {
         if t.0 != room_name {
             t.0 = room_name.clone();
+        }
+    }
+    let level_name = level_label(level.number(), &level.0.name);
+    for mut t in &mut texts.p3() {
+        if t.0 != level_name {
+            t.0 = level_name.clone();
         }
     }
     for (mut t, mut color, slot) in &mut texts.p2() {
@@ -462,7 +526,24 @@ mod tests {
 
     #[test]
     fn labels() {
-        assert_eq!(timer_label(125.5), "ARRIVAL IN 2:06");
+        assert_eq!(repairs_label(3, 7), "REPAIRS 3 OF 7");
+        assert_eq!(repairs_label(0, 0), "");
+        let flying = Journey::default();
+        let cleared = Journey {
+            cleared_at: Some(80.0),
+            ..flying
+        };
+        assert_eq!(
+            status_label(&AppState::Playing, &flying, 2, 4),
+            "REPAIRS 2 OF 4"
+        );
+        assert_eq!(
+            status_label(&AppState::Playing, &cleared, 4, 4),
+            "ALL FIXED - LANDING"
+        );
+        assert_eq!(status_label(&AppState::Landed, &cleared, 4, 4), "LANDED");
+        assert_eq!(level_label(2, "Level 2"), "LEVEL 2 OF 5");
+        assert_eq!(level_label(0, "Test flight"), "TEST FLIGHT");
         assert_eq!(belt_label(Tool::Tape, 19.2), "[2] TAPE 20s");
         assert_eq!(belt_label(Tool::Wrench, 0.0), "[1] WRENCH");
     }

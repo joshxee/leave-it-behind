@@ -1,10 +1,11 @@
-//! Ambient cues: the only warning outside the diagnostic screen. They say
-//! that something is wrong and how urgent it is, never where.
+//! Ambient cues: they say that something is wrong and how urgent it is,
+//! never what (the HUD's vitals panel) or where (the diagnostic screen).
 //!
 //! - A jolt of screen shake when a fault starts.
 //! - A pulsing red tint while any fault is active, deeper and faster as the
-//!   most urgent fault's clock runs down.
-//! - Growing shake over the last half of the most urgent fault's clock.
+//!   most urgent fault nears failure (its oxygen or heat pool, or the drift's
+//!   clock: [`Vitals::urgency`]).
+//! - Growing shake over the last half of the way to the most urgent failure.
 //!
 //! The screen shake and alarm flashing settings scale the shake and the
 //! pulse. With flashing off the tint holds steady, still deepening with
@@ -12,7 +13,7 @@
 
 use bevy::prelude::*;
 
-use crate::faults::Fault;
+use crate::faults::{Fault, Vitals};
 use crate::settings::Settings;
 use crate::ship::CameraRig;
 use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
@@ -106,6 +107,7 @@ fn reset(mut alarm: ResMut<Alarm>) {
 fn update_alarm(
     time: Res<Time>,
     faults: Query<&Fault>,
+    vitals: Res<Vitals>,
     new_faults: Query<(), Added<Fault>>,
     mut alarm: ResMut<Alarm>,
 ) {
@@ -113,7 +115,7 @@ fn update_alarm(
     alarm.level = faults
         .iter()
         .filter(|f| !f.is_repaired())
-        .map(Fault::urgency)
+        .map(|f| vitals.urgency(f))
         .fold(0.0, f32::max);
     alarm.jolt = if new_faults.is_empty() {
         (alarm.jolt - time.delta_secs()).max(0.0)

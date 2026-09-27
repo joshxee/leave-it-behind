@@ -24,9 +24,11 @@ pub mod scenarios;
 pub mod settings;
 pub mod shapes;
 pub mod ship;
+pub mod sound;
 pub mod state;
 pub mod tools;
 pub mod ui;
+pub mod upgrades;
 pub mod version;
 
 pub use determinism::TestDeterminismPlugin;
@@ -53,10 +55,12 @@ impl Plugin for GamePlugin {
                 shapes::ShapesPlugin,
                 art::ArtPlugin,
                 ship::ShipPlugin,
+                sound::SoundPlugin,
                 player::PlayerPlugin,
                 tools::ToolsPlugin,
                 faults::FaultsPlugin,
                 level::LevelPlugin,
+                upgrades::UpgradesPlugin,
             ))
             .add_plugins((
                 diagnostics::DiagnosticsPlugin,

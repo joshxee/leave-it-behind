@@ -1,12 +1,14 @@
 //! Where each kind of fault can happen. Positions come from the ship map
-//! (`ship::map`): breach points are marked `'1'..'9'` on hull walls, bolt
-//! panels are the long faces of the engine blocks `'P'` and `'S'`, and the
-//! helm is the cockpit's pilot seat. Names are ship-relative (port and
+//! (`ship::map`): breach points are marked on hull walls (`BREACH_MARKS`),
+//! bolt panels are the long faces of the engine blocks `'P'` and `'S'`, and
+//! the helm is the cockpit's pilot seat. Names are ship-relative (port and
 //! starboard, fore and aft), so they hold whichever way the ship points; the
 //! labels the diagnostic screen shows are worked out from the layout.
 //!
-//! Hull breaches concentrate around the airlock: its sites carry three times
-//! the weight of the main hull's.
+//! Hull breaches can open in the airlock, the main hull, and the cockpit and
+//! both engine rooms (where the other faults are, so there is less running
+//! between them); never in the quarters or the gun room. An unpinned breach
+//! picks any of them with equal odds.
 
 use bevy::prelude::*;
 
@@ -36,6 +38,12 @@ pub enum Site {
     HullPortAft,
     HullStarboardMid,
     HullPortFore,
+    /// Breach points on the cockpit's side walls and the engine rooms'
+    /// outer walls.
+    CockpitPort,
+    CockpitStarboard,
+    EngineRoomPort,
+    EngineRoomStarboard,
 }
 
 pub const BOLT_SITES: [Site; 4] = [
@@ -45,7 +53,7 @@ pub const BOLT_SITES: [Site; 4] = [
     Site::StarboardEngineOuter,
 ];
 pub const DRIFT_SITES: [Site; 1] = [Site::Helm];
-pub const BREACH_SITES: [Site; 9] = [
+pub const BREACH_SITES: [Site; 13] = [
     Site::AirlockHatchPort,
     Site::AirlockHatchStarboard,
     Site::AirlockPortAft,
@@ -55,6 +63,10 @@ pub const BREACH_SITES: [Site; 9] = [
     Site::HullPortAft,
     Site::HullStarboardMid,
     Site::HullPortFore,
+    Site::CockpitPort,
+    Site::CockpitStarboard,
+    Site::EngineRoomPort,
+    Site::EngineRoomStarboard,
 ];
 
 /// Bolt spacing along an engine face.
@@ -71,7 +83,7 @@ enum Anchor {
 }
 
 impl Site {
-    pub const ALL: [Site; 14] = [
+    pub const ALL: [Site; 18] = [
         Site::PortEngineInner,
         Site::PortEngineOuter,
         Site::StarboardEngineInner,
@@ -86,6 +98,10 @@ impl Site {
         Site::HullPortAft,
         Site::HullStarboardMid,
         Site::HullPortFore,
+        Site::CockpitPort,
+        Site::CockpitStarboard,
+        Site::EngineRoomPort,
+        Site::EngineRoomStarboard,
     ];
 
     pub fn kind(self) -> FaultKind {
@@ -112,6 +128,10 @@ impl Site {
             Site::HullPortAft => Anchor::Wall('7'),
             Site::HullStarboardMid => Anchor::Wall('8'),
             Site::HullPortFore => Anchor::Wall('9'),
+            Site::CockpitPort => Anchor::Wall('r'),
+            Site::CockpitStarboard => Anchor::Wall('t'),
+            Site::EngineRoomPort => Anchor::Wall('u'),
+            Site::EngineRoomStarboard => Anchor::Wall('w'),
         }
     }
 
@@ -131,6 +151,10 @@ impl Site {
             Site::HullPortAft => "HullPortAft",
             Site::HullStarboardMid => "HullStarboardMid",
             Site::HullPortFore => "HullPortFore",
+            Site::CockpitPort => "CockpitPort",
+            Site::CockpitStarboard => "CockpitStarboard",
+            Site::EngineRoomPort => "EngineRoomPort",
+            Site::EngineRoomStarboard => "EngineRoomStarboard",
         }
     }
 
@@ -237,14 +261,6 @@ impl Site {
         }
     }
 
-    /// Default pick weight among the sites of the same kind.
-    pub fn weight(self) -> f32 {
-        match self.room() {
-            RoomId::Airlock => 3.0,
-            _ => 1.0,
-        }
-    }
-
     /// The three bolt positions of an engine panel, along the face.
     pub fn bolts(self) -> Option<[Vec2; 3]> {
         (self.kind() == FaultKind::LooseBolts).then(|| {
@@ -303,13 +319,11 @@ mod tests {
     }
 
     #[test]
-    fn breaches_sit_on_airlock_or_hull_walls() {
+    fn breaches_sit_on_hull_walls_outside_the_quarters_and_gun_room() {
         let walls = walls();
         for site in BREACH_SITES {
-            assert!(
-                matches!(site.room(), RoomId::Airlock | RoomId::Hull),
-                "{site:?}"
-            );
+            assert_ne!(site.room(), RoomId::Quarters, "{site:?}");
+            assert_ne!(site.room(), RoomId::GunRoom, "{site:?}");
             // Reaching for it from the room touches the wall right there.
             let from = site.pos() + site.normal() * 20.0;
             let contact = wall_contact(from, site.pos(), 0.5, &walls).expect("on a wall");
@@ -319,15 +333,28 @@ mod tests {
     }
 
     #[test]
-    fn breaches_concentrate_around_the_airlock() {
-        let weight = |room| {
-            BREACH_SITES
-                .iter()
-                .filter(|s| s.room() == room)
-                .map(|s| s.weight())
-                .sum::<f32>()
-        };
-        assert!(weight(RoomId::Airlock) >= 3.0 * weight(RoomId::Hull));
+    fn the_cockpit_and_engine_rooms_have_breaches_near_the_other_faults() {
+        // Close to the helm and the bolts: less running between faults.
+        let sides: Vec<Vec2> = BREACH_SITES
+            .iter()
+            .filter(|s| s.room() == RoomId::Cockpit)
+            .map(|s| s.normal())
+            .collect();
+        assert_eq!(sides.len(), 2);
+        assert_eq!(sides[0], -sides[1], "opposite walls");
+        for (site, engine) in [
+            (Site::EngineRoomPort, Site::PortEngineOuter),
+            (Site::EngineRoomStarboard, Site::StarboardEngineOuter),
+        ] {
+            assert_eq!(site.room(), engine.room(), "{site:?}");
+            assert_eq!(
+                site.normal(),
+                -engine.normal(),
+                "{site:?}: facing the engine"
+            );
+        }
+        assert!(Site::CockpitPort.pos().x < Site::CockpitStarboard.pos().x);
+        assert!(Site::EngineRoomPort.pos().x < Site::EngineRoomStarboard.pos().x);
     }
 
     #[test]

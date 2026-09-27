@@ -50,7 +50,7 @@ test('a first flight waits for the pre-flight check, and only the first', async 
     expect(held.coach.lines).toHaveLength(1);
     expect(held.coach.lines[0]).toContain('diagnostic console');
     expect(held.settings.tips).toBe(true);
-    await attachShot(page, testInfo, 'preflight: quarters, ARRIVAL IN 4:30, a cyan-bordered panel under it reading Pre-flight check: walk to the diagnostic console and press E, controls hint at the bottom');
+    await attachShot(page, testInfo, 'preflight: quarters, REPAIRS 0 OF 4, a cyan-bordered panel under it reading Pre-flight check: walk to the diagnostic console and press E, controls hint at the bottom');
     await page.waitForTimeout(1000);
     const later = await gameState(page);
     expect(later.journey.elapsed).toBe(0);
@@ -65,7 +65,7 @@ test('a first flight waits for the pre-flight check, and only the first', async 
     const stored = await page.evaluate(() => localStorage.getItem('leave-it-behind/settings'));
     expect(stored).toContain('preflight: true');
 
-    // Once only: after a reload, the next flight goes straight to the countdown.
+    // Once only: after a reload, the next flight launches straight away.
     await page.reload();
     await page.waitForFunction(() => window.__bevyReady === true, null, { timeout: 90_000 });
     await waitForState(page, (s) => s.ready && s.menu?.screen === 'Title');
@@ -77,7 +77,7 @@ test('a first flight waits for the pre-flight check, and only the first', async 
     await waitForState(page, (s) => s.journey.elapsed > 1.5);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'second-flight: quarters with no coaching panel, ARRIVAL IN already below 4:30');
+    await attachShot(page, testInfo, 'second-flight: quarters with no coaching panel, REPAIRS n OF 4 at the top');
   }
 });
 
@@ -139,6 +139,6 @@ test('TIPS in the settings switches the coaching off and back on', async ({ page
     expect(restarted.coach.lines[0]).toContain('diagnostic console');
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'tips-on-again: quarters after a restart, ARRIVAL IN 4:30 and the pre-flight check panel again');
+    await attachShot(page, testInfo, 'tips-on-again: quarters after a restart, REPAIRS 0 OF 4 and the pre-flight check panel again');
   }
 });

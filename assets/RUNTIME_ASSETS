@@ -1,6 +1,14 @@
 # Files the game loads at runtime, relative to assets/. Builds copy only these
 # (scripts/stage-assets.sh); everything else under assets/ is source art.
 # A unit test (src/art) checks the game's asset paths are listed here.
+audio/clank-sound/Clank.wav
+audio/gameplay/653305__monster_1999_kyle__car-wrench-sound-effect.wav
+audio/gameplay/565269__ninjasharkstudios__duct-tape_long_1.wav
+audio/gameplay/851916__tommasomotteran__derelict-spaceship-engine-rustbound-reactor-02-loop.wav
+audio/gameplay/244112__jobro__hull-breach.ogg
+audio/gameplay/CREDITS.txt
+audio/other-sounds/543404__alexo400__sci_fi_door.wav
+audio/other-sounds/191852__vortex4__kaiju-lab-interior-ambience-1.wav
 characters/engineer/engineer-atlas.png
 cover/engineer-emergency-cover-square.png
 environment/derelict-ship/ship-atlas.png

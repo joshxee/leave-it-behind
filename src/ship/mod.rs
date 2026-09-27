@@ -180,7 +180,7 @@ fn spawn_ship(mut commands: Commands, art: Res<Art>, maintenance: Res<Maintenanc
         }
         let prop = |tile: Tile| (art.tile(tile), at(center, z::PROP));
         match c {
-            '#' | '1'..='9' => {
+            c if c == '#' || crate::ship::map::is_breach_mark(c) => {
                 commands.spawn((
                     WallCell(cell),
                     maintenance.sprite("wall-depth", 0, Vec2::new(64.0, 88.0)),

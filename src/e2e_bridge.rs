@@ -23,10 +23,12 @@ use crate::alarm::Alarm;
 use crate::coach::{Coach, lines};
 use crate::determinism::FixedTick;
 use crate::diagnostics::Diagnostics;
-use crate::faults::Fault;
 use crate::faults::bolts::Bolt;
 use crate::faults::drift::{Nav, in_band};
-use crate::level::{CurrentLevel, Damage, Journey, LastRun, Progress, RunRecord, RunStats};
+use crate::faults::{Fault, Vitals};
+use crate::level::{
+    CurrentLevel, Damage, FaultPlan, Journey, LastRun, Progress, RunRecord, RunStats,
+};
 use crate::menu::{Menu, MenuCtx, MenuRow, content};
 use crate::player::sprite::EngineerSprite;
 use crate::player::{Facing, Focus, InteractKind, Locked, Movement, Player};
@@ -34,7 +36,8 @@ use crate::ship::doors::Door;
 use crate::ship::layout::console_point;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
-use crate::ui::Notices;
+use crate::ui::{Gauge, Notices, gauge};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, Pause};
 
 const SNAPSHOT_EVERY: u32 = 2;
@@ -128,6 +131,7 @@ struct Snapshot<'w, 's> {
     menu: Res<'w, Menu>,
     menu_ctx: MenuCtx<'w>,
     level: Res<'w, CurrentLevel>,
+    upgrades: Res<'w, Upgrades>,
     progress: Res<'w, Progress>,
     last_run: Res<'w, LastRun>,
     notices: Res<'w, Notices>,
@@ -150,7 +154,9 @@ struct Snapshot<'w, 's> {
     nav: Res<'w, Nav>,
     diag: Res<'w, Diagnostics>,
     alarm: Res<'w, Alarm>,
+    vitals: Res<'w, Vitals>,
     stats: Res<'w, RunStats>,
+    plan: Res<'w, FaultPlan>,
     coach: Res<'w, Coach>,
     players: Query<
         'w,
@@ -267,6 +273,26 @@ fn progress_json(s: &Snapshot) -> String {
     )
 }
 
+/// The level being flown: its id, place in the campaign and name.
+fn level_json(s: &Snapshot) -> String {
+    format!(
+        r#"{{"id":{},"number":{},"name":{}}}"#,
+        js_str(&s.level.0.id),
+        s.level.number(),
+        js_str(&s.level.0.name)
+    )
+}
+
+/// Times each upgrade has been picked this campaign.
+fn upgrades_json(s: &Snapshot) -> String {
+    format!(
+        r#"{{"runFaster":{},"fasterWrench":{},"widerTape":{}}}"#,
+        s.upgrades.count(Upgrade::RunFaster),
+        s.upgrades.count(Upgrade::FasterWrench),
+        s.upgrades.count(Upgrade::WiderTape)
+    )
+}
+
 fn settings_json(s: &Snapshot) -> String {
     let settings = s.menu_ctx.settings();
     format!(
@@ -299,6 +325,23 @@ fn coach_json(s: &Snapshot) -> String {
         s.coach.active,
         shown.join(",")
     )
+}
+
+/// What the vitals panel's rows say, top to bottom.
+fn gauges_json(s: &Snapshot) -> String {
+    let rows: Vec<String> = Gauge::ALL
+        .map(|g| gauge(g, &s.vitals, s.faults.iter()))
+        .iter()
+        .map(|r| {
+            format!(
+                r#"{{"label":{},"value":{},"alert":{}}}"#,
+                js_str(r.label),
+                js_str(&r.value),
+                r.alert
+            )
+        })
+        .collect();
+    format!("[{}]", rows.join(","))
 }
 
 fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
@@ -341,7 +384,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             f.kind().as_str(),
             f.site.as_str(),
             f.site.room().as_str(),
-            f.remaining(),
+            s.vitals.time_left(f),
             f.repair,
             p.x,
             p.y,
@@ -378,18 +421,19 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
     let console = console_point();
     format!(
         concat!(
-            r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"lastRun":{},"notice":{},"#,
+            r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"level":{},"upgrades":{},"lastRun":{},"notice":{},"#,
             r#""tick":{},"frozen":{},"ready":{},"#,
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
             r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"tapeContact":{},"strips":{},"#,
-            r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1},"launched":{}}},"#,
+            r#""journey":{{"elapsed":{:.3},"launched":{},"cleared":{}}},"#,
             r#""coach":{},"console":{{"x":{:.1},"y":{:.1}}},"#,
             r#""faults":[{}],"looseBolts":[{}],"doors":[{}],"#,
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
             r#""alarm":{{"level":{:.3},"active":{},"jolt":{:.3}}},"#,
-            r#""stats":{{"started":{},"fixed":{},"failure":{},"damage":{}}},"#,
+            r#""vitals":{{"oxygen":{:.3},"heat":{:.3},"gauges":{}}},"#,
+            r#""stats":{{"started":{},"fixed":{},"total":{},"failure":{},"damage":{}}},"#,
             r#""entities":{{"players":{},"faults":{},"tapeStrips":{}}}}}"#,
         ),
         s.state.get().as_str(),
@@ -397,6 +441,8 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         menu_json(s),
         settings_json(s),
         progress_json(s),
+        level_json(s),
+        upgrades_json(s),
         last_run,
         notice,
         s.tick.0,
@@ -422,9 +468,8 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         tape_contact,
         s.strips.iter().count(),
         s.journey.elapsed,
-        s.journey.remaining(),
-        s.journey.duration,
         s.journey.launched,
+        s.journey.cleared(),
         coach_json(s),
         console.x,
         console.y,
@@ -440,8 +485,12 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.alarm.level,
         s.alarm.active,
         s.alarm.jolt,
+        s.vitals.oxygen_left(),
+        s.vitals.heat.spent,
+        gauges_json(s),
         s.stats.started,
         s.stats.fixed,
+        s.plan.total(&s.stats),
         failure,
         damage_json(&s.stats.damage),
         s.players.iter().count(),

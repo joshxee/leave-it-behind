@@ -17,13 +17,14 @@ use bevy::prelude::*;
 
 use crate::art::engineer::{contact, facing};
 use crate::coach::{Tip, TipsSeen};
-use crate::faults::{Fault, Site, fault_bundle};
-use crate::level::{FaultPlan, Journey};
+use crate::faults::{Site, Vitals, fault_bundle};
+use crate::level::{CurrentLevel, FaultPlan, RunStats, campaign::level};
 use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
 use crate::settings::Settings;
 use crate::ship::layout;
 use crate::tools::{Tool, ToolBelt};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, Pause, RunSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -44,10 +45,14 @@ pub enum Scenario {
     Diagnostics,
     /// All three kinds at once; the engineer is in the quarters.
     Scramble,
-    /// Level one with three seconds to arrival and nothing broken.
+    /// Level one with every fault fixed: the final approach, landing three
+    /// seconds after launch.
     Landing,
-    /// The `breach` scenario with two seconds left on the breach's clock.
+    /// The `breach` scenario with two seconds of oxygen left.
     BreachCritical,
+    /// The `breach` scenario with the air still at 40% from an earlier one:
+    /// the new breach empties it in 40% of its clock.
+    SecondBreach,
     /// The `breach` scenario with one second of tape left.
     TapeLow,
     /// Level one from launch, paused: the pause menu is open.
@@ -61,6 +66,12 @@ pub enum Scenario {
     /// bolts on the port engine with their tip up, the engineer in front of
     /// them with the wrench (as in `bolts`).
     FirstBolts,
+    /// The last level from launch, with an upgrade picked before each level
+    /// (run faster, faster wrench, wider tape, run faster).
+    LevelFive,
+    /// The `level_five` scenario with every fault fixed, three seconds from
+    /// touchdown: landing ends the campaign.
+    FinalLanding,
 }
 
 impl Scenario {
@@ -74,11 +85,14 @@ impl Scenario {
         Scenario::Scramble,
         Scenario::Landing,
         Scenario::BreachCritical,
+        Scenario::SecondBreach,
         Scenario::TapeLow,
         Scenario::Paused,
         Scenario::Settings,
         Scenario::FirstFlight,
         Scenario::FirstBolts,
+        Scenario::LevelFive,
+        Scenario::FinalLanding,
     ];
 
     pub fn name(self) -> &'static str {
@@ -92,11 +106,14 @@ impl Scenario {
             Scenario::Scramble => "scramble",
             Scenario::Landing => "landing",
             Scenario::BreachCritical => "breach_critical",
+            Scenario::SecondBreach => "second_breach",
             Scenario::TapeLow => "tape_low",
             Scenario::Paused => "paused",
             Scenario::Settings => "settings",
             Scenario::FirstFlight => "first_flight",
             Scenario::FirstBolts => "first_bolts",
+            Scenario::LevelFive => "level_five",
+            Scenario::FinalLanding => "final_landing",
         }
     }
 
@@ -122,11 +139,14 @@ impl Scenario {
             Scenario::Scramble => scramble(world),
             Scenario::Landing => landing(world),
             Scenario::BreachCritical => breach_critical(world),
+            Scenario::SecondBreach => second_breach(world),
             Scenario::TapeLow => tape_low(world),
             Scenario::Paused => paused(world),
             Scenario::Settings => settings(world),
             Scenario::FirstFlight => first_flight(world),
             Scenario::FirstBolts => first_bolts(world),
+            Scenario::LevelFive => level_five(world),
+            Scenario::FinalLanding => final_landing(world),
         }
     }
 }
@@ -190,9 +210,12 @@ fn bolts(world: &mut World) {
     hold(world, Tool::Wrench);
 }
 
+/// The `breach` scenario's clock: a full tank lasts this long.
+pub const BREACH_CLOCK: f32 = 50.0;
+
 fn breach(world: &mut World) {
     quiet(world);
-    start(world, Site::AirlockPortAft, 50.0);
+    start(world, Site::AirlockPortAft, BREACH_CLOCK);
     place_player(world, breach_stand(), -Site::AirlockPortAft.normal());
     hold(world, Tool::Tape);
 }
@@ -217,18 +240,23 @@ fn scramble(world: &mut World) {
     start(world, Site::Helm, 50.0);
 }
 
+/// Every planned fault counted as started and fixed, so the flight is
+/// cleared on its first tick and lands after the final approach.
 fn landing(world: &mut World) {
-    quiet(world);
-    let mut journey = world.resource_mut::<Journey>();
-    journey.elapsed = journey.duration - 3.0;
+    let planned = std::mem::take(&mut world.resource_mut::<FaultPlan>().pending).len() as u32;
+    let mut stats = world.resource_mut::<RunStats>();
+    stats.started = planned;
+    stats.fixed = planned;
 }
 
 fn breach_critical(world: &mut World) {
     breach(world);
-    let mut q = world.query::<&mut Fault>();
-    for mut fault in q.iter_mut(world) {
-        fault.elapsed = fault.clock - 2.0;
-    }
+    world.resource_mut::<Vitals>().oxygen.spent = 1.0 - 2.0 / BREACH_CLOCK;
+}
+
+fn second_breach(world: &mut World) {
+    breach(world);
+    world.resource_mut::<Vitals>().oxygen.spent = 0.6;
 }
 
 fn tape_low(world: &mut World) {
@@ -260,6 +288,34 @@ fn first_bolts(world: &mut World) {
     let mut seen = TipsSeen::default();
     seen.mark(Tip::Preflight);
     tips_seen(world, seen);
+}
+
+/// Flies campaign level `number` instead of the one the run started with:
+/// its fault plan replaces the one already rolled.
+fn fly_level(world: &mut World, number: usize) {
+    let def = level(number).expect("a campaign level");
+    let plan = world.resource_scope(|_, mut rng: Mut<crate::GameRng>| def.roll(&mut rng));
+    world.resource_mut::<FaultPlan>().pending = plan;
+    world.insert_resource(CurrentLevel(def));
+}
+
+fn level_five(world: &mut World) {
+    fly_level(world, 5);
+    let mut upgrades = Upgrades::default();
+    for (level, upgrade) in (2..).zip([
+        Upgrade::RunFaster,
+        Upgrade::FasterWrench,
+        Upgrade::WiderTape,
+        Upgrade::RunFaster,
+    ]) {
+        upgrades.choose(level, upgrade);
+    }
+    world.insert_resource(upgrades);
+}
+
+fn final_landing(world: &mut World) {
+    level_five(world);
+    landing(world);
 }
 
 /// Scenario to apply to every run. Insert before the first `app.update()`.
