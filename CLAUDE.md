@@ -109,7 +109,7 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
   resources and a fake `Window`. Asset-dependent plugins skip themselves without `AssetServer`.
 - In a frame, `FixedUpdate` runs before `Update`, so input read in `Update` applies next frame.
 - wasm is single-threaded: no blocking, no `std::thread`, no `std::time::Instant` (use `bevy::platform::time`).
-- Browsers block audio until the user interacts with the page (the game has no sound yet).
+- Browsers block audio until the user interacts with the page; the title menu provides that interaction before the flight's sound cues.
 - Aiming converts the cursor with the room camera's `anchor`: after teleporting the player in a
   test, run a frame before `aim_at` so the camera has cut to the new room.
 - Don't enable `dynamic_linking` on wasm.
