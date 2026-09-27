@@ -17,13 +17,13 @@ use crate::ship::layout;
 use crate::{AppState, GameRng, GameSet, RunSet, palette};
 
 /// Half-width of the centre band.
-pub const BAND_HALF: f32 = 0.35;
+pub const BAND_HALF: f32 = 0.4;
 /// Seconds in the band to fix the course.
 pub const HOLD_SECS: f32 = 3.0;
 /// Hold progress lost per second outside the band.
-pub const HOLD_DECAY: f32 = 0.25;
+pub const HOLD_DECAY: f32 = 0.15;
 /// Marker drift speed while the fault is active (display half-widths per second).
-pub const DRIFT_SPEED: f32 = 0.2;
+pub const DRIFT_SPEED: f32 = 0.15;
 /// Marker speed under WASD.
 pub const NUDGE_SPEED: f32 = 0.9;
 /// Without a drift the marker settles back to the centre at this speed.
@@ -46,6 +46,18 @@ pub struct Nav {
     pub engaged: bool,
     /// Current WASD input at the helm (tilts the joystick).
     pub stick: Vec2,
+}
+
+/// Display half-size the normalized marker coordinates map onto.
+fn marker_half() -> Vec2 {
+    layout::nav_screen().half_size() - Vec2::splat(8.0)
+}
+
+/// Just outside the band: the marker turns amber so the player knows green is close.
+pub const NEAR_MARGIN: f32 = 0.15;
+
+pub fn near_band(marker: Vec2) -> bool {
+    marker.x.abs() <= BAND_HALF + NEAR_MARGIN && marker.y.abs() <= BAND_HALF + NEAR_MARGIN
 }
 
 pub fn in_band(marker: Vec2) -> bool {
@@ -78,6 +90,8 @@ pub fn step_hold(hold: f32, inside: bool, dt: f32) -> f32 {
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 enum NavPart {
     Frame,
+    /// Outline of the centre square: lights up while the marker is inside.
+    Target,
     Marker,
     Hold,
     Stick,
@@ -117,13 +131,27 @@ fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
     ));
     commands.spawn((rect(screen.size(), palette::NAV_SCREEN), at(c, 1.12)));
     // Two crossing bands; their overlap in the middle is the target.
-    let band = screen.size() * BAND_HALF;
+    // Same scale the marker is drawn at, so "looks inside" means "is inside".
+    let band = marker_half() * BAND_HALF;
+    let side = band * 2.0;
+    for (offset, size) in [
+        (Vec2::new(0.0, band.y), Vec2::new(side.x + 4.0, 4.0)),
+        (Vec2::new(0.0, -band.y), Vec2::new(side.x + 4.0, 4.0)),
+        (Vec2::new(band.x, 0.0), Vec2::new(4.0, side.y + 4.0)),
+        (Vec2::new(-band.x, 0.0), Vec2::new(4.0, side.y + 4.0)),
+    ] {
+        commands.spawn((
+            NavPart::Target,
+            rect(size, palette::UI_DIM),
+            at(c + offset, 1.155),
+        ));
+    }
     commands.spawn((
-        rect(Vec2::new(screen.width(), band.y * 2.0), palette::NAV_BAND),
+        rect(Vec2::new(screen.width(), side.y), palette::NAV_BAND),
         at(c, 1.14),
     ));
     commands.spawn((
-        rect(Vec2::new(band.x * 2.0, screen.height()), palette::NAV_BAND),
+        rect(Vec2::new(side.x, screen.height()), palette::NAV_BAND),
         at(c, 1.14),
     ));
     commands.spawn((
@@ -234,7 +262,9 @@ fn draw_nav(
     mut parts: Query<(&NavPart, &mut Transform, &mut Sprite)>,
 ) {
     let screen = layout::nav_screen();
-    let half = screen.half_size() - Vec2::splat(8.0);
+    let half = marker_half();
+    let inside = in_band(nav.marker);
+    let near = near_band(nav.marker);
     let drift = faults
         .iter()
         .find(|f| f.kind() == FaultKind::TrajectoryDrift);
@@ -252,10 +282,24 @@ fn draw_nav(
             NavPart::Marker => {
                 let p = screen.center() + nav.marker * half;
                 transform.translation = p.extend(transform.translation.z);
-                sprite.color = if alarm {
-                    palette::NAV_ALERT
-                } else {
+                // Red far off, amber close, green inside (and bigger).
+                sprite.color = if !alarm {
                     palette::NAV_MARKER
+                } else if near {
+                    palette::NAV_NEAR
+                } else {
+                    palette::NAV_ALERT
+                };
+                let r = if inside { 11.0 } else { 8.0 };
+                sprite.custom_size = Some(Vec2::splat(r * 2.0));
+            }
+            NavPart::Target => {
+                sprite.color = if inside {
+                    palette::NAV_MARKER
+                } else if near {
+                    palette::NAV_NEAR
+                } else {
+                    palette::UI_DIM
                 };
             }
             NavPart::Hold => {

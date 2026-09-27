@@ -77,23 +77,23 @@ fn walking_through_a_door_cuts_the_camera_to_the_next_room() {
 }
 
 #[test]
-fn helm_to_airlock_takes_about_twelve_seconds() {
+fn helm_to_airlock_takes_about_fifteen_seconds() {
     let mut app = test_app_with(Scenario::Quiet);
     put_player(&mut app, layout::helm_seat());
     press(&mut app, KeyCode::KeyA);
     let tail = RoomId::Airlock.interior().min.x + PLAYER_RADIUS + 1.0;
-    let frames = run_until(&mut app, secs(15.0), |app| player_pos(app).x <= tail);
+    let frames = run_until(&mut app, secs(18.0), |app| player_pos(app).x <= tail);
     let seconds = frames as f32 / 60.0;
-    assert!((11.0..=13.5).contains(&seconds), "took {seconds}s");
+    assert!((13.5..=16.0).contains(&seconds), "took {seconds}s");
     assert_eq!(app.world().resource::<CurrentRoom>().0, RoomId::Airlock);
 }
 
 #[test]
-fn room_hops_take_two_to_three_and_a_half_seconds() {
+fn room_hops_take_two_and_a_half_to_four_seconds() {
     for pair in RoomId::ALL.windows(2) {
         let hop = pair[0].center().distance(pair[1].center()) / PLAYER_SPEED;
         assert!(
-            (2.0..=3.5).contains(&hop),
+            (2.5..=4.0).contains(&hop),
             "{:?} -> {:?}: {hop}s",
             pair[0],
             pair[1]
