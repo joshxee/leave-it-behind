@@ -68,6 +68,38 @@ test('tape: hold the button on the breach to seal it', async ({ page }, testInfo
   }
 });
 
+test('tape: pressed right up against the hull, it still goes on the inside', async ({ page }, testInfo) => {
+  const errors = collectErrors(page);
+  try {
+    await openGame(page, { scenario: 'breach' });
+    const s = await gameState(page);
+    const breach = s.faults[0];
+    // Walk straight at the hole until the wall stops the engineer: the roll
+    // then reaches past the middle of the wall, nearer its outside face.
+    const dx = breach.x - s.player.x;
+    const dy = breach.y - s.player.y;
+    const key = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'd' : 'a') : dy > 0 ? 'w' : 's';
+    await page.keyboard.down(key);
+    await waitForState(page, (t, b) => Math.hypot(b.x - t.player.x, b.y - t.player.y) < 15, breach);
+    await page.keyboard.up(key);
+    await waitForState(page, (t) => !t.player.walking);
+    await aimAt(page, breach);
+    await page.mouse.down();
+    const taping = await waitForState(page, (t) => t.tapeContact !== null && t.strips >= 4);
+    await attachShot(page, testInfo, 'breach-flush: airlock, engineer pressed against the left wall, tape feed and woven strips going onto the hole in the wall face, nothing on the floor in front of it');
+    // On the hole, on the face the engineer stands at: not the hull's outside.
+    const c = taping.tapeContact!;
+    expect(Math.hypot(c.x - breach.x, c.y - breach.y)).toBeLessThan(2);
+    expect((taping.player.x - c.x) * c.nx + (taping.player.y - c.y) * c.ny).toBeGreaterThan(0);
+    const done = await waitForState(page, (t) => t.faults.length === 0);
+    await page.mouse.up();
+    expect(done.stats.fixed).toBe(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await attachShot(page, testInfo, 'breach-flush-sealed: the hole covered by a woven silver tape patch on the wall face, no strips anywhere else, no air ring');
+  }
+});
+
 /**
  * Closed-loop steering at the helm: holds the keys that point the marker back
  * at the centre until `done(state)`, then lets go of them.

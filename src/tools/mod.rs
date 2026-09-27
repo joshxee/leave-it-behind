@@ -9,7 +9,9 @@
 //!   [`WrenchTightened`]. Pulling off the target cancels the turn.
 //! - Tape: while the button is held and the roll's edge touches a wall,
 //!   tape comes off the roll (one second of tape per second) and
-//!   [`TapeLaid`] is sent. Tape on bare wall is wasted; the roll is finite.
+//!   [`TapeLaid`] is sent. It goes on the side of the wall the engineer
+//!   stands on, however far the roll is pressed in: never on the outside of
+//!   the hull. Tape on bare wall is wasted; the roll is finite.
 
 use bevy::prelude::*;
 
@@ -301,15 +303,20 @@ fn use_tape(
     walls: Res<Walls>,
     mut belt: ResMut<ToolBelt>,
     mut state: ResMut<ToolState>,
-    players: Query<&Movement, (With<Player>, Without<Locked>)>,
+    players: Query<(&Transform, &Movement), (With<Player>, Without<Locked>)>,
     mut out: MessageWriter<TapeLaid>,
 ) {
     state.taping = None;
-    let standing = players.iter().next().is_some_and(|m| !m.walking);
-    if belt.held != Tool::Tape || !intent.use_held || belt.tape_left <= 0.0 || !standing {
+    let Some((transform, movement)) = players.iter().next() else {
+        return;
+    };
+    if belt.held != Tool::Tape || !intent.use_held || belt.tape_left <= 0.0 || movement.walking {
         return;
     }
-    let Some(contact) = wall_contact(state.tip, TAPE_CONTACT, &walls.0) else {
+    // The roll reaches out from the engineer, so it only ever meets the side
+    // of a wall they stand on: never the outside of the hull.
+    let feet = transform.translation.truncate();
+    let Some(contact) = wall_contact(feet, state.tip, TAPE_CONTACT, &walls.0) else {
         return;
     };
     let secs = time.delta_secs().min(belt.tape_left);
@@ -407,6 +414,54 @@ fn draw_snap(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::art::engineer::facing_vector;
+    use crate::player::PLAYER_RADIUS;
+    use crate::ship::layout::{colliders, resolve_circle, ship, walls};
+
+    /// Every spot the engineer can stand, every way they can face: tape only
+    /// ever touches a wall face that looks into the ship.
+    #[test]
+    fn tape_only_ever_touches_the_inside_of_the_ship() {
+        let (ship, walls, colliders) = (ship(), walls(), colliders());
+        // Floor lies under the ship's side of every wall (`floor_quadrants`).
+        let inside = |p: Vec2| {
+            let cell = ship.cell_at(p);
+            let c = ship.center(cell);
+            ship.floor_quadrants(cell)[usize::from(p.y < c.y) * 2 + usize::from(p.x > c.x)]
+        };
+        let bounds = ship
+            .rooms()
+            .map(|r| r.interior())
+            .reduce(|a, b| a.union(b))
+            .expect("a room");
+        let steps = |lo: f32, hi: f32| {
+            (0..)
+                .map(move |i| lo + i as f32 * 6.0)
+                .take_while(move |v| *v <= hi)
+        };
+        let (mut touched, mut pressed_in) = (0, 0);
+        for y in steps(bounds.min.y, bounds.max.y) {
+            for x in steps(bounds.min.x, bounds.max.x) {
+                let feet = Vec2::new(x, y);
+                if !inside(feet) || resolve_circle(feet, PLAYER_RADIUS, &colliders) != feet {
+                    continue;
+                }
+                for dir in 0..16 {
+                    let tip = tool_tip(Tool::Tape, feet, facing_vector(dir), false);
+                    let Some(c) = wall_contact(feet, tip, TAPE_CONTACT, &walls) else {
+                        continue;
+                    };
+                    touched += 1;
+                    pressed_in += usize::from(walls.iter().any(|w| w.contains(tip)));
+                    assert!(
+                        inside(c.point + c.normal * 2.0),
+                        "tape outside the hull, standing at {feet} facing {dir}: {c:?}"
+                    );
+                }
+            }
+        }
+        assert!(touched > 1000 && pressed_in > 100, "{touched} {pressed_in}");
+    }
 
     #[test]
     fn cycling_wraps_both_ways() {

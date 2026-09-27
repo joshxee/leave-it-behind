@@ -157,8 +157,9 @@ Test bridge (`src/e2e_bridge.rs`, wasm + `--features e2e` only):
 title, or a flight with `?scenario=`), and `window.__bevyState`: state, paused,
 menu (screen, focus, rows with their labels and canvas rectangles), settings,
 progress, lastRun, notice, tick, room, camera, player (position, facing,
-locked, walking, animation `pose` and facing `dir`), focus, tool, tape, faults
-(kind, site, room, remaining, repair, position), loose bolts, doors (position,
+locked, walking, animation `pose` and facing `dir`), focus, tool, tape (and
+the wall point and normal it is going on), faults (kind, site, room,
+remaining, repair, position), loose bolts, doors (position,
 frame, open), nav marker, diagnostics view, alarm, run stats (with damage). The
 full shape is `BevyState` in `e2e/specs/helpers.ts`. Saves use the page's real
 `localStorage` (each test gets a fresh browser context), so a `page.reload()`

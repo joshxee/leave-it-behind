@@ -310,7 +310,10 @@ mod tests {
                 matches!(site.room(), RoomId::Airlock | RoomId::Hull),
                 "{site:?}"
             );
-            let contact = wall_contact(site.pos(), 0.5, &walls).expect("on a wall");
+            // Reaching for it from the room touches the wall right there.
+            let from = site.pos() + site.normal() * 20.0;
+            let contact = wall_contact(from, site.pos(), 0.5, &walls).expect("on a wall");
+            assert!(contact.point.distance(site.pos()) < 1e-3, "{site:?}");
             assert_eq!(contact.normal, site.normal(), "{site:?}");
         }
     }

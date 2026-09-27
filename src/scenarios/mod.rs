@@ -302,8 +302,8 @@ mod tests {
         assert!(tip.distance(bolt) > 1.0, "the snap has something to pull");
         let aim = -Site::AirlockPortAft.normal();
         let tape_tip = tool_tip(Tool::Tape, breach_stand(), aim, false);
-        let contact =
-            wall_contact(tape_tip, TAPE_CONTACT, &walls()).expect("tape reaches the wall");
+        let contact = wall_contact(breach_stand(), tape_tip, TAPE_CONTACT, &walls())
+            .expect("tape reaches the wall");
         assert!(contact.point.distance(Site::AirlockPortAft.pos()) < BREACH_RADIUS);
     }
 }

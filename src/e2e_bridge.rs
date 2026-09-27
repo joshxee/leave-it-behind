@@ -328,6 +328,12 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
     let failure = s.stats.failure.map_or("null".to_string(), |site| {
         format!(r#""{}""#, site.kind().as_str())
     });
+    let tape_contact = s.tools.taping.map_or("null".to_string(), |c| {
+        format!(
+            r#"{{"x":{:.3},"y":{:.3},"nx":{:.3},"ny":{:.3}}}"#,
+            c.point.x, c.point.y, c.normal.x, c.normal.y
+        )
+    });
     let paused = s.pause.as_ref().is_some_and(|p| *p.get() == Pause::Paused);
     let last_run = s.last_run.record.as_ref().map_or("null".to_string(), |r| {
         format!(
@@ -343,7 +349,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             r#""tick":{},"frozen":{},"ready":{},"#,
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
-            r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"strips":{},"#,
+            r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"tapeContact":{},"strips":{},"#,
             r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1}}},"#,
             r#""faults":[{}],"looseBolts":[{}],"doors":[{}],"#,
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
@@ -379,6 +385,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.tools.snap.is_some(),
         s.tools.turn.is_some(),
         s.tools.taping.is_some(),
+        tape_contact,
         s.strips.iter().count(),
         s.journey.elapsed,
         s.journey.remaining(),
