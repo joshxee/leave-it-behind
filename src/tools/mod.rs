@@ -22,7 +22,7 @@ pub const WRENCH_REACH: f32 = 46.0;
 /// The head snaps to a target within this distance of its rest position.
 pub const SNAP_RADIUS: f32 = 30.0;
 /// One click turns a bolt for this long.
-pub const WRENCH_TURN_SECS: f32 = 0.6;
+pub const WRENCH_TURN_SECS: f32 = 0.9;
 /// Player center to the tape roll.
 pub const TAPE_REACH: f32 = 36.0;
 /// The roll lays tape on a wall within this distance of it.

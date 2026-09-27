@@ -22,12 +22,12 @@ fn elapsed(app: &App) -> f32 {
 }
 
 #[test]
-fn the_countdown_starts_at_four_minutes() {
+fn the_countdown_starts_at_four_and_a_half_minutes() {
     let mut app = test_app();
     boot(&mut app);
     let journey = *app.world().resource::<Journey>();
-    assert_eq!(journey.duration, 240.0);
-    assert!(journey.remaining() > 239.9);
+    assert_eq!(journey.duration, 270.0);
+    assert!(journey.remaining() > 269.9);
 }
 
 #[test]
@@ -82,9 +82,9 @@ fn reaching_zero_lands_the_ship() {
 fn ignoring_every_fault_loses_to_the_first() {
     let mut app = test_app();
     boot(&mut app);
-    run_until(&mut app, secs(70.0), |app| state(app) == AppState::Lost);
-    // Loose bolts at 0:10 with a 55 s clock.
-    assert!((elapsed(&app) - 65.0).abs() < 0.1, "{}", elapsed(&app));
+    run_until(&mut app, secs(85.0), |app| state(app) == AppState::Lost);
+    // Loose bolts at 0:10 with a 67 s clock.
+    assert!((elapsed(&app) - 77.0).abs() < 0.1, "{}", elapsed(&app));
     let failure = app.world().resource::<RunStats>().failure.unwrap();
     assert_eq!(failure.kind(), FaultKind::LooseBolts);
 }
@@ -96,7 +96,7 @@ fn an_engineer_who_fixes_everything_within_twenty_seconds_lands() {
     // directly; the controls have their own tests.
     let mut app = test_app();
     boot(&mut app);
-    run_until(&mut app, secs(250.0), |app| {
+    run_until(&mut app, secs(280.0), |app| {
         let mut q = app.world_mut().query::<&mut Fault>();
         for mut fault in q.iter_mut(app.world_mut()) {
             if fault.elapsed >= 20.0 {
@@ -122,7 +122,7 @@ fn r_starts_a_fresh_run() {
     put_player(&mut app, layout::helm_seat());
     app.world_mut().resource_mut::<ToolBelt>().tape_left = 3.0;
     run_until(&mut app, secs(12.0), |app| elapsed(app) >= 11.0);
-    app.world_mut().resource_mut::<Journey>().elapsed = 240.0;
+    app.world_mut().resource_mut::<Journey>().elapsed = 270.0;
     run_until(&mut app, 5, |app| state(app) == AppState::Landed);
 
     tap(&mut app, KeyCode::KeyR);

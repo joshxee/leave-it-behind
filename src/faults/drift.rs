@@ -17,13 +17,13 @@ use crate::ship::layout;
 use crate::{AppState, GameRng, GameSet, RunSet, palette};
 
 /// Half-width of the centre band.
-pub const BAND_HALF: f32 = 0.25;
+pub const BAND_HALF: f32 = 0.35;
 /// Seconds in the band to fix the course.
 pub const HOLD_SECS: f32 = 3.0;
 /// Hold progress lost per second outside the band.
-pub const HOLD_DECAY: f32 = 0.5;
+pub const HOLD_DECAY: f32 = 0.25;
 /// Marker drift speed while the fault is active (display half-widths per second).
-pub const DRIFT_SPEED: f32 = 0.35;
+pub const DRIFT_SPEED: f32 = 0.2;
 /// Marker speed under WASD.
 pub const NUDGE_SPEED: f32 = 0.9;
 /// Without a drift the marker settles back to the centre at this speed.
@@ -31,7 +31,7 @@ pub const RECENTER_SPEED: f32 = 0.6;
 /// How far off-centre a new drift throws the marker.
 pub const KICK: f32 = 0.55;
 /// Drift heading turn rate range (radians per second, either direction).
-const TURN_RANGE: (f32, f32) = (0.35, 0.75);
+const TURN_RANGE: (f32, f32) = (0.2, 0.45);
 /// E works within this distance of the joystick.
 pub const HELM_RANGE: f32 = 75.0;
 

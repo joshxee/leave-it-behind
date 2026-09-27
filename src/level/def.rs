@@ -267,12 +267,12 @@ mod tests {
                         Choice::any(FaultKind::HullBreach, 2.0),
                         Choice::any(FaultKind::LooseBolts, 1.0),
                     ],
-                    clock: TimeWindow::new(45.0, 60.0),
+                    clock: TimeWindow::new(55.0, 70.0),
                 },
                 FaultSlot {
                     window: TimeWindow::new(60.0, 90.0),
                     choices: vec![Choice::any(FaultKind::TrajectoryDrift, 1.0)],
-                    clock: TimeWindow::new(50.0, 55.0),
+                    clock: TimeWindow::new(60.0, 65.0),
                 },
             ],
         }
@@ -290,7 +290,7 @@ mod tests {
                 plan[0].site.kind(),
                 FaultKind::HullBreach | FaultKind::LooseBolts
             ));
-            assert!((45.0..=60.0).contains(&plan[0].clock));
+            assert!((55.0..=70.0).contains(&plan[0].clock));
             assert_eq!(plan[1].site, Site::Helm);
             assert!((60.0..=90.0).contains(&plan[1].at));
         }
@@ -356,7 +356,7 @@ mod tests {
     fn validation_reports_every_problem() {
         let mut level = random_level();
         level.duration_secs = 25.0;
-        level.slots[0].clock = TimeWindow::new(30.0, 70.0);
+        level.slots[0].clock = TimeWindow::new(30.0, 80.0);
         level.slots[1].choices = vec![Choice {
             weight: 0.0,
             kind: FaultKind::LooseBolts,

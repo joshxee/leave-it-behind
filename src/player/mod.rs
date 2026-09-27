@@ -10,8 +10,8 @@ use crate::ship::layout::{self, move_circle};
 use crate::ship::{CameraRig, Colliders, cursor_to_world};
 use crate::{AppState, GameSet, RunEntity, RunSet, palette};
 
-/// World units per second. Tip to tail (helm to airlock) takes about ten seconds.
-pub const PLAYER_SPEED: f32 = 420.0;
+/// World units per second. Tip to tail (helm to airlock) takes about twelve seconds.
+pub const PLAYER_SPEED: f32 = 340.0;
 pub const PLAYER_RADIUS: f32 = 18.0;
 /// Pixel-unit scroll deltas (browsers, touchpads) per tool step.
 const SCROLL_PIXELS_PER_STEP: f32 = 60.0;

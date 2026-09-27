@@ -2,7 +2,7 @@
 //! an exact start time, site and clock, and the seed fixes the drift
 //! headings, so every run of this level is identical.
 //!
-//! Tuning (4:00 flight, clocks 45-60 s, about 20 s to reach and fix a fault):
+//! Tuning (4:30 flight, clocks 55-75 s, about 20 s to reach and fix a fault):
 //! - 0:10-1:30, settling in: one fault at a time, each kind once.
 //! - 1:36-2:40, pairs: two faults at once, the second pair at opposite ends
 //!   of the ship (helm and airlock).
@@ -16,7 +16,7 @@ pub const LEVEL_ONE_SEED: u64 = 0x1EA7_0001;
 pub fn level_one() -> LevelDef {
     LevelDef {
         name: "Level 1".into(),
-        duration_secs: 240.0,
+        duration_secs: 270.0,
         seed: Some(LEVEL_ONE_SEED),
         envelope: Envelope {
             max_overlap: 3,
@@ -24,18 +24,18 @@ pub fn level_one() -> LevelDef {
         },
         slots: vec![
             // Settling in: comfortable, one at a time.
-            FaultSlot::pinned(10.0, Site::PortEngineInner, 55.0),
-            FaultSlot::pinned(38.0, Site::AirlockPortAft, 50.0),
-            FaultSlot::pinned(66.0, Site::Helm, 60.0),
+            FaultSlot::pinned(10.0, Site::PortEngineInner, 67.0),
+            FaultSlot::pinned(38.0, Site::AirlockPortAft, 62.0),
+            FaultSlot::pinned(66.0, Site::Helm, 72.0),
             // Pairs: tense.
-            FaultSlot::pinned(96.0, Site::HullStarboardMid, 50.0),
-            FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 55.0),
-            FaultSlot::pinned(132.0, Site::Helm, 55.0),
-            FaultSlot::pinned(140.0, Site::AirlockHatchLower, 45.0),
+            FaultSlot::pinned(96.0, Site::HullStarboardMid, 62.0),
+            FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 67.0),
+            FaultSlot::pinned(132.0, Site::Helm, 67.0),
+            FaultSlot::pinned(140.0, Site::AirlockHatchLower, 57.0),
             // Final approach: a scramble.
-            FaultSlot::pinned(176.0, Site::PortEngineOuter, 50.0),
-            FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 45.0),
-            FaultSlot::pinned(186.0, Site::Helm, 50.0),
+            FaultSlot::pinned(176.0, Site::PortEngineOuter, 62.0),
+            FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 57.0),
+            FaultSlot::pinned(186.0, Site::Helm, 62.0),
         ],
     }
 }
@@ -85,7 +85,7 @@ mod tests {
         };
         assert_eq!(phase(0.0, 90.0), 1, "comfortable");
         assert_eq!(phase(90.0, 170.0), 2, "tense");
-        assert_eq!(phase(170.0, 240.0), 3, "scramble");
+        assert_eq!(phase(170.0, 270.0), 3, "scramble");
         assert_eq!(peak_overlap(&plan, r), level.envelope.max_overlap);
     }
 
