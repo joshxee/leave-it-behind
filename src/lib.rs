@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
 pub mod alarm;
+pub mod art;
 pub mod determinism;
 pub mod diagnostics;
 #[cfg(all(feature = "e2e", target_arch = "wasm32"))]
@@ -44,6 +45,7 @@ impl Plugin for GamePlugin {
                 state::StatePlugin,
                 rng::RngPlugin,
                 shapes::ShapesPlugin,
+                art::ArtPlugin,
                 ship::ShipPlugin,
                 player::PlayerPlugin,
                 tools::ToolsPlugin,

@@ -86,4 +86,4 @@ node --preserve-symlinks --preserve-symlinks-main assets/environment/derelict-sh
 
 The build copies the palette from `assets/characters/engineer`; packaging copies one engineer PNG for the room preview. The validator reuses sprite-axi's installed `pngjs` decoder; set `PNGJS_PATH` to another installed copy if needed. The optional preview server binds only localhost: `node assets/environment/derelict-ship/source/serve.cjs`, then open `http://127.0.0.1:4174/preview/index.html`.
 
-The artwork has been checked at its native pixel scale in the assembled room. Automated validation checks all 64 tiles and 240 compatible wall-border pairs. These are prototype assets and data; the Bevy game code has not been changed.
+The artwork has been checked at its native pixel scale in the assembled room. Automated validation checks all 64 tiles and 240 compatible wall-border pairs. The game uses this pack through `src/art/tiles.rs` and the ship map in `src/ship/map.rs` (see `src/art/README.md` and `src/ship/README.md`); its unit tests check the tile data against `manifest.json`.

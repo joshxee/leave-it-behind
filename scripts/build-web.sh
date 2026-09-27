@@ -31,9 +31,8 @@ cargo build --profile "$PROFILE" --target wasm32-unknown-unknown "${FEATURES[@]}
 wasm-bindgen --no-typescript --out-name bevy_game --out-dir "$OUT" --target web \
   "target/wasm32-unknown-unknown/$PROFILE/$BIN.wasm"
 
-# Real copy (symlinks don't work on Windows).
-rm -rf "$OUT/assets"
-cp -R assets "$OUT/assets"
+# Only the files the game loads (assets/RUNTIME_ASSETS); the rest is source art.
+scripts/stage-assets.sh "$OUT/assets"
 
 # Version shown by the crash overlay in index.html.
 VERSION="${GAME_VERSION:-$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)}"

@@ -26,7 +26,9 @@ use crate::faults::Fault;
 use crate::faults::bolts::Bolt;
 use crate::faults::drift::{Nav, in_band};
 use crate::level::{Journey, RunStats};
-use crate::player::{Facing, Focus, InteractKind, Locked, Player};
+use crate::player::sprite::EngineerSprite;
+use crate::player::{Facing, Focus, InteractKind, Locked, Movement, Player};
+use crate::ship::doors::Door;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
 
@@ -128,7 +130,19 @@ struct Snapshot<'w, 's> {
     diag: Res<'w, Diagnostics>,
     alarm: Res<'w, Alarm>,
     stats: Res<'w, RunStats>,
-    players: Query<'w, 's, (&'static Transform, &'static Facing, Has<Locked>), With<Player>>,
+    players: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static Facing,
+            &'static Movement,
+            Has<Locked>,
+        ),
+        With<Player>,
+    >,
+    sprites: Query<'w, 's, &'static EngineerSprite>,
+    doors: Query<'w, 's, &'static Door>,
     rigs: Query<'w, 's, &'static CameraRig>,
     faults: Query<'w, 's, &'static Fault>,
     bolts: Query<'w, 's, &'static Bolt>,
@@ -147,12 +161,29 @@ fn publish_state(bridge: Res<Bridge>, mut frame: Local<u32>, s: Snapshot) {
 }
 
 fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
-    let (pos, facing, locked) = s
+    let (pos, facing, walking, locked) = s
         .players
         .iter()
         .next()
-        .map(|(t, f, l)| (t.translation.truncate(), f.0, l))
+        .map(|(t, f, m, l)| (t.translation.truncate(), f.0, m.walking, l))
         .unwrap_or_default();
+    let (pose, dir) = s
+        .sprites
+        .iter()
+        .next()
+        .map_or(("none", 0), |e| (e.action.as_str(), e.dir16));
+    let mut doors = String::new();
+    for (i, d) in s.doors.iter().enumerate() {
+        let _ = write!(
+            doors,
+            r#"{}{{"x":{:.1},"y":{:.1},"frame":{},"open":{}}}"#,
+            if i > 0 { "," } else { "" },
+            d.center.x,
+            d.center.y,
+            d.frame,
+            d.is_open(),
+        );
+    }
     let camera = s.rigs.iter().next().map(|r| r.anchor).unwrap_or_default();
     let focus = match s.focus.0 {
         Some(InteractKind::Helm) => r#""Helm""#,
@@ -192,10 +223,10 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         concat!(
             r#"{{"state":"{}","tick":{},"frozen":{},"ready":{},"#,
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
-            r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{}}},"focus":{},"#,
+            r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
             r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"strips":{},"#,
             r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1}}},"#,
-            r#""faults":[{}],"looseBolts":[{}],"#,
+            r#""faults":[{}],"looseBolts":[{}],"doors":[{}],"#,
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
             r#""alarm":{{"level":{:.3},"active":{},"jolt":{:.3}}},"#,
@@ -214,6 +245,9 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         facing.x,
         facing.y,
         locked,
+        walking,
+        pose,
+        dir,
         focus,
         s.belt.held.as_str(),
         s.belt.tape_left,
@@ -226,6 +260,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.journey.duration,
         faults,
         bolts,
+        doors,
         s.nav.engaged,
         s.nav.marker.x,
         s.nav.marker.y,

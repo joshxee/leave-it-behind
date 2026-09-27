@@ -1,24 +1,33 @@
-//! Where each kind of fault can happen. Hull breaches concentrate around the
-//! airlock: its sites carry three times the weight of the main hull's.
+//! Where each kind of fault can happen. Positions come from the ship map
+//! (`ship::map`): breach points are marked `'1'..'9'` on hull walls, bolt
+//! panels are the long faces of the engine blocks `'P'` and `'S'`, and the
+//! helm is the cockpit's pilot seat. Names are ship-relative (port and
+//! starboard, fore and aft), so they hold whichever way the ship points; the
+//! labels the diagnostic screen shows are worked out from the layout.
+//!
+//! Hull breaches concentrate around the airlock: its sites carry three times
+//! the weight of the main hull's.
 
 use bevy::prelude::*;
 
 use super::FaultKind;
 use crate::ship::RoomId;
-use crate::ship::layout;
+use crate::ship::layout::{self, ship};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Site {
-    /// Bolt panels: three bolts along one face of an engine block.
+    /// Bolt panels: three bolts along one long face of an engine block.
+    /// Inner faces look toward the spine, outer faces toward the hull.
     PortEngineInner,
     PortEngineOuter,
     StarboardEngineInner,
     StarboardEngineOuter,
     /// The nav helm in the cockpit.
     Helm,
-    /// Breach points on the airlock walls.
-    AirlockHatchUpper,
-    AirlockHatchLower,
+    /// Breach points on the airlock walls: either side of the outer hatch,
+    /// and the port and starboard walls.
+    AirlockHatchPort,
+    AirlockHatchStarboard,
     AirlockPortAft,
     AirlockPortFore,
     AirlockStarboardAft,
@@ -37,8 +46,8 @@ pub const BOLT_SITES: [Site; 4] = [
 ];
 pub const DRIFT_SITES: [Site; 1] = [Site::Helm];
 pub const BREACH_SITES: [Site; 9] = [
-    Site::AirlockHatchUpper,
-    Site::AirlockHatchLower,
+    Site::AirlockHatchPort,
+    Site::AirlockHatchStarboard,
     Site::AirlockPortAft,
     Site::AirlockPortFore,
     Site::AirlockStarboardAft,
@@ -51,6 +60,16 @@ pub const BREACH_SITES: [Site; 9] = [
 /// Bolt spacing along an engine face.
 const BOLT_SPACING: f32 = 120.0;
 
+/// Where on the map a site is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Anchor {
+    /// An engine block's long face: the inner one, or the outer one.
+    Engine(char, bool),
+    Helm,
+    /// A breach mark on a hull wall.
+    Wall(char),
+}
+
 impl Site {
     pub const ALL: [Site; 14] = [
         Site::PortEngineInner,
@@ -58,8 +77,8 @@ impl Site {
         Site::StarboardEngineInner,
         Site::StarboardEngineOuter,
         Site::Helm,
-        Site::AirlockHatchUpper,
-        Site::AirlockHatchLower,
+        Site::AirlockHatchPort,
+        Site::AirlockHatchStarboard,
         Site::AirlockPortAft,
         Site::AirlockPortFore,
         Site::AirlockStarboardAft,
@@ -70,13 +89,29 @@ impl Site {
     ];
 
     pub fn kind(self) -> FaultKind {
+        match self.anchor() {
+            Anchor::Engine(..) => FaultKind::LooseBolts,
+            Anchor::Helm => FaultKind::TrajectoryDrift,
+            Anchor::Wall(_) => FaultKind::HullBreach,
+        }
+    }
+
+    fn anchor(self) -> Anchor {
         match self {
-            Site::PortEngineInner
-            | Site::PortEngineOuter
-            | Site::StarboardEngineInner
-            | Site::StarboardEngineOuter => FaultKind::LooseBolts,
-            Site::Helm => FaultKind::TrajectoryDrift,
-            _ => FaultKind::HullBreach,
+            Site::PortEngineInner => Anchor::Engine('P', true),
+            Site::PortEngineOuter => Anchor::Engine('P', false),
+            Site::StarboardEngineInner => Anchor::Engine('S', true),
+            Site::StarboardEngineOuter => Anchor::Engine('S', false),
+            Site::Helm => Anchor::Helm,
+            Site::AirlockHatchPort => Anchor::Wall('1'),
+            Site::AirlockHatchStarboard => Anchor::Wall('2'),
+            Site::AirlockPortAft => Anchor::Wall('3'),
+            Site::AirlockPortFore => Anchor::Wall('4'),
+            Site::AirlockStarboardAft => Anchor::Wall('5'),
+            Site::AirlockStarboardFore => Anchor::Wall('6'),
+            Site::HullPortAft => Anchor::Wall('7'),
+            Site::HullStarboardMid => Anchor::Wall('8'),
+            Site::HullPortFore => Anchor::Wall('9'),
         }
     }
 
@@ -87,8 +122,8 @@ impl Site {
             Site::StarboardEngineInner => "StarboardEngineInner",
             Site::StarboardEngineOuter => "StarboardEngineOuter",
             Site::Helm => "Helm",
-            Site::AirlockHatchUpper => "AirlockHatchUpper",
-            Site::AirlockHatchLower => "AirlockHatchLower",
+            Site::AirlockHatchPort => "AirlockHatchPort",
+            Site::AirlockHatchStarboard => "AirlockHatchStarboard",
             Site::AirlockPortAft => "AirlockPortAft",
             Site::AirlockPortFore => "AirlockPortFore",
             Site::AirlockStarboardAft => "AirlockStarboardAft",
@@ -99,64 +134,106 @@ impl Site {
         }
     }
 
-    /// Where in the room, in screen terms (the diagnostic list).
-    pub fn label(self) -> &'static str {
-        match self {
-            Site::PortEngineInner => "upper engine, spine side",
-            Site::PortEngineOuter => "upper engine, wall side",
-            Site::StarboardEngineInner => "lower engine, spine side",
-            Site::StarboardEngineOuter => "lower engine, wall side",
-            Site::Helm => "nav helm",
-            Site::AirlockHatchUpper => "hatch seal, upper",
-            Site::AirlockHatchLower => "hatch seal, lower",
-            Site::AirlockPortAft | Site::HullPortAft => "upper wall, rear",
-            Site::AirlockPortFore | Site::HullPortFore => "upper wall, front",
-            Site::AirlockStarboardAft => "lower wall, rear",
-            Site::AirlockStarboardFore => "lower wall, front",
-            Site::HullStarboardMid => "lower wall, middle",
+    /// Where in the room, in screen terms (the diagnostic list), worked out
+    /// from the layout: "left wall, bottom", "right engine, spine side"...
+    pub fn label(self) -> String {
+        let room = self.room().interior();
+        match self.anchor() {
+            Anchor::Helm => "nav helm".into(),
+            Anchor::Engine(block, inner) => {
+                let offset = layout::ship()
+                    .block(block)
+                    .map_or(Vec2::ZERO, |b| b.center())
+                    - room.center();
+                let which = if offset.x.abs() >= offset.y.abs() {
+                    if offset.x < 0.0 { "left" } else { "right" }
+                } else if offset.y > 0.0 {
+                    "upper"
+                } else {
+                    "lower"
+                };
+                let face = if inner { "spine side" } else { "wall side" };
+                format!("{which} engine, {face}")
+            }
+            Anchor::Wall(_) => {
+                let (pos, normal) = (self.pos(), self.normal());
+                let horizontal = normal.x == 0.0;
+                let hatch = ship()
+                    .doors()
+                    .iter()
+                    .find(|d| {
+                        d.locked && d.across_x == horizontal && d.center.distance(pos) <= 2.5 * 64.0
+                    })
+                    .map(|d| d.center);
+                let along = |lo: &'static str, mid: &'static str, hi: &'static str| {
+                    let (v, min, max) = if horizontal {
+                        (pos.x, room.min.x, room.max.x)
+                    } else {
+                        (pos.y, room.min.y, room.max.y)
+                    };
+                    let t = (v - min) / (max - min);
+                    if t < 1.0 / 3.0 {
+                        lo
+                    } else if t > 2.0 / 3.0 {
+                        hi
+                    } else {
+                        mid
+                    }
+                };
+                if let Some(hatch) = hatch {
+                    let side = if horizontal {
+                        if pos.x < hatch.x { "left" } else { "right" }
+                    } else if pos.y > hatch.y {
+                        "top"
+                    } else {
+                        "bottom"
+                    };
+                    return format!("hatch seal, {side}");
+                }
+                let wall = match (normal.x, normal.y) {
+                    (_, y) if y < 0.0 => "upper wall",
+                    (_, y) if y > 0.0 => "lower wall",
+                    (x, _) if x > 0.0 => "left wall",
+                    _ => "right wall",
+                };
+                let spot = if horizontal {
+                    along("left", "middle", "right")
+                } else {
+                    along("bottom", "middle", "top")
+                };
+                format!("{wall}, {spot}")
+            }
         }
     }
 
     pub fn room(self) -> RoomId {
-        RoomId::at(self.pos().x)
+        RoomId::at(self.pos())
     }
 
     /// The fault's location: the middle bolt of a panel, the breach point on
     /// the wall's inner face, or the joystick.
     pub fn pos(self) -> Vec2 {
-        let (a, h) = (RoomId::Airlock.interior(), RoomId::Hull.interior());
-        match self {
-            Site::PortEngineInner => bottom_mid(layout::port_engine()),
-            Site::PortEngineOuter => top_mid(layout::port_engine()),
-            Site::StarboardEngineInner => top_mid(layout::starboard_engine()),
-            Site::StarboardEngineOuter => bottom_mid(layout::starboard_engine()),
-            Site::Helm => layout::joystick(),
-            Site::AirlockHatchUpper => Vec2::new(a.min.x, 150.0),
-            Site::AirlockHatchLower => Vec2::new(a.min.x, -150.0),
-            Site::AirlockPortAft => Vec2::new(a.min.x + 190.0, a.max.y),
-            Site::AirlockPortFore => Vec2::new(a.max.x - 190.0, a.max.y),
-            Site::AirlockStarboardAft => Vec2::new(a.min.x + 230.0, a.min.y),
-            Site::AirlockStarboardFore => Vec2::new(a.max.x - 150.0, a.min.y),
-            Site::HullPortAft => Vec2::new(h.min.x + 170.0, h.max.y),
-            Site::HullStarboardMid => Vec2::new(h.center().x, h.min.y),
-            Site::HullPortFore => Vec2::new(h.max.x - 170.0, h.max.y),
+        match self.anchor() {
+            Anchor::Engine(block, inner) => engine_face(block, inner).0,
+            Anchor::Helm => layout::joystick(),
+            Anchor::Wall(mark) => wall_mark(mark).point,
         }
     }
 
     /// Unit vector out of the surface the fault sits on, into the room.
     pub fn normal(self) -> Vec2 {
-        match self {
-            Site::PortEngineInner | Site::StarboardEngineOuter => Vec2::NEG_Y,
-            Site::PortEngineOuter | Site::StarboardEngineInner => Vec2::Y,
-            Site::Helm => Vec2::NEG_X,
-            Site::AirlockHatchUpper | Site::AirlockHatchLower => Vec2::X,
-            Site::AirlockPortAft
-            | Site::AirlockPortFore
-            | Site::HullPortAft
-            | Site::HullPortFore => Vec2::NEG_Y,
-            Site::AirlockStarboardAft | Site::AirlockStarboardFore | Site::HullStarboardMid => {
-                Vec2::Y
-            }
+        match self.anchor() {
+            Anchor::Engine(block, inner) => engine_face(block, inner).1,
+            Anchor::Helm => -ship().helm().facing,
+            Anchor::Wall(mark) => wall_mark(mark).normal,
+        }
+    }
+
+    /// The wall cell of a breach site.
+    pub fn wall_cell(self) -> Option<IVec2> {
+        match self.anchor() {
+            Anchor::Wall(mark) => Some(wall_mark(mark).cell),
+            _ => None,
         }
     }
 
@@ -168,26 +245,46 @@ impl Site {
         }
     }
 
-    /// The three bolt positions of an engine panel.
+    /// The three bolt positions of an engine panel, along the face.
     pub fn bolts(self) -> Option<[Vec2; 3]> {
         (self.kind() == FaultKind::LooseBolts).then(|| {
-            let mid = self.pos();
-            [-BOLT_SPACING, 0.0, BOLT_SPACING].map(|dx| mid + Vec2::new(dx, 0.0))
+            let (mid, normal) = (self.pos(), self.normal());
+            [-BOLT_SPACING, 0.0, BOLT_SPACING].map(|d| mid + normal.perp() * d)
         })
     }
 }
 
-fn top_mid(r: Rect) -> Vec2 {
-    Vec2::new(r.center().x, r.max.y)
+fn wall_mark(mark: char) -> crate::ship::map::WallMark {
+    ship()
+        .wall_mark(mark)
+        .unwrap_or_else(|| panic!("the ship map has no breach point {mark:?}"))
 }
 
-fn bottom_mid(r: Rect) -> Vec2 {
-    Vec2::new(r.center().x, r.min.y)
+/// The middle of an engine block's long face and its outward normal. The
+/// inner face looks toward the middle of the room.
+fn engine_face(block: char, inner: bool) -> (Vec2, Vec2) {
+    let rect = ship()
+        .block(block)
+        .unwrap_or_else(|| panic!("the ship map has no engine {block:?}"));
+    let middle = RoomId::at(rect.center()).center() - rect.center();
+    let long_x = rect.width() >= rect.height();
+    let normals = if long_x {
+        [Vec2::Y, Vec2::NEG_Y]
+    } else {
+        [Vec2::X, Vec2::NEG_X]
+    };
+    let normal = normals
+        .into_iter()
+        .find(|n| (n.dot(middle) > 0.0) == inner)
+        .expect("one face looks toward the middle");
+    let depth = if long_x { rect.height() } else { rect.width() } / 2.0;
+    (rect.center() + normal * depth, normal)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::player::PLAYER_RADIUS;
     use crate::ship::layout::{colliders, resolve_circle, wall_contact, walls};
 
     #[test]
@@ -236,15 +333,55 @@ mod tests {
         let colliders = colliders();
         for site in Site::ALL {
             let stand = site.pos() + site.normal() * 40.0;
-            assert_eq!(resolve_circle(stand, 18.0, &colliders), stand, "{site:?}");
+            assert_eq!(
+                resolve_circle(stand, PLAYER_RADIUS, &colliders),
+                stand,
+                "{site:?}"
+            );
             if let Some(bolts) = site.bolts() {
                 for bolt in bolts {
                     let stand = bolt + site.normal() * 40.0;
-                    assert_eq!(resolve_circle(stand, 18.0, &colliders), stand, "{site:?}");
+                    assert_eq!(
+                        resolve_circle(stand, PLAYER_RADIUS, &colliders),
+                        stand,
+                        "{site:?}"
+                    );
                 }
             }
         }
         // The helm is worked from the seat, which faces the joystick.
         assert!(layout::helm_seat().distance(Site::Helm.pos()) < 60.0);
+    }
+
+    #[test]
+    fn port_is_left_and_fore_is_up_on_a_ship_pointing_up() {
+        // The map points the ship up: port on the left, the bow at the top.
+        assert!(Site::PortEngineInner.pos().x < 0.0);
+        assert!(Site::StarboardEngineInner.pos().x > 0.0);
+        assert!(Site::HullPortFore.pos().y > Site::HullPortAft.pos().y);
+        assert!(Site::AirlockHatchPort.pos().x < Site::AirlockHatchStarboard.pos().x);
+    }
+
+    #[test]
+    fn labels_follow_the_layout() {
+        assert_eq!(Site::HullPortAft.label(), "left wall, bottom");
+        assert_eq!(Site::HullStarboardMid.label(), "right wall, middle");
+        assert_eq!(Site::AirlockHatchPort.label(), "hatch seal, left");
+        assert_eq!(Site::PortEngineInner.label(), "left engine, spine side");
+        assert_eq!(
+            Site::StarboardEngineOuter.label(),
+            "right engine, wall side"
+        );
+        assert_eq!(Site::Helm.label(), "nav helm");
+        for site in Site::ALL {
+            assert!(site.label().is_ascii(), "{site:?}");
+        }
+    }
+
+    #[test]
+    fn inner_bolt_faces_look_toward_the_spine() {
+        for site in [Site::PortEngineInner, Site::StarboardEngineInner] {
+            assert!(site.normal().dot(-site.pos().with_y(0.0)) > 0.0, "{site:?}");
+        }
     }
 }

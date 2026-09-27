@@ -9,11 +9,11 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
 const palette = fs.readFileSync(path.join(root, 'engineer-16.pal'), 'utf8').trim().split(/\r?\n/).slice(3).map(s => s.split(' ').map(Number));
 const valid = new Set(palette.slice(1).map(c => c.join(',')));
 const issues = [], images = new Map(), colors = new Set(), groups = {};
-const expected = { idle: 16, walk: 32, wrench_hold: 16, tape_hold: 16, wrench_use: 24, tape_use: 24 };
+const expected = { idle: 16, walk: 32, wrench_hold: 16, tape_hold: 16, wrench_use: 24, tape_use: 24, wrench_walk: 32, tape_walk: 32 };
 const atlas=PNG.sync.read(fs.readFileSync(path.join(root,'engineer-atlas.png')));
 const atlasMeta=JSON.parse(fs.readFileSync(path.join(root,'engineer-atlas.aseprite.json'),'utf8'));
 const atlasFrames=Object.values(atlasMeta.frames);
-if(atlas.width!==1024||atlas.height!==512)issues.push('Incorrect atlas size');
+if(atlas.width!==1024||atlas.height!==Math.ceil(manifest.frames.length/16)*64)issues.push('Incorrect atlas size');
 if(palette.length!==16||new Set(palette.map(c=>c.join(','))).size!==16)issues.push('Palette must contain 16 unique entries');
 if(palette.slice(1).some(([r,g,b])=>r>g||g>b))issues.push('Palette contains a non-cold colour');
 for (const frame of manifest.frames) {
@@ -69,7 +69,7 @@ for(const a of manifest.animations.filter(a=>a.files.length>1)) {
 const idleHashes=new Set(manifest.frames.filter(f=>f.action==='idle').map(f=>images.get(f.file).hash));
 if(idleHashes.size!==16)issues.push('Idle directions are duplicated');
 const actual=fs.readdirSync(path.join(root,'png')).filter(s=>s.endsWith('.png')).length;
-if(actual!==128)issues.push(`Expected 128 individual PNGs, found ${actual}`);
+if(actual!==manifest.frames.length)issues.push(`Expected ${manifest.frames.length} individual PNGs, found ${actual}`);
 for(const a of manifest.animations) {
   const t=atlasMeta.meta.frameTags.find(t=>t.name===a.name);
   if(!t||t.from!==a.from_frame-1||t.to!==a.to_frame-1)issues.push(`${a.name}: incorrect Aseprite tag range`);

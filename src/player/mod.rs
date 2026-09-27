@@ -1,18 +1,24 @@
-//! The engineer: WASD movement that slides along walls, facing toward the
-//! mouse, and E for whichever console is in reach.
+//! The engineer: WASD movement that slides along walls (and is steered into
+//! doorways), facing toward the mouse, and E for whichever console is in
+//! reach. The sprite and its animations are in `sprite.rs`.
+
+pub mod sprite;
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use crate::shapes::{Shapes, at};
+use crate::art::Art;
+use crate::shapes::at;
+use crate::ship::doors::{Door, door_assist};
 use crate::ship::layout::{self, move_circle};
 use crate::ship::{CameraRig, Colliders, cursor_to_world};
-use crate::{AppState, GameSet, RunEntity, RunSet, palette};
+use crate::{AppState, GameSet, RunEntity, RunSet};
 
-/// World units per second. Tip to tail (helm to airlock) takes about fifteen seconds.
+/// World units per second.
 pub const PLAYER_SPEED: f32 = 280.0;
-pub const PLAYER_RADIUS: f32 = 18.0;
+/// Radius of the engineer's footprint (under 16, so a door's 36-unit gap fits).
+pub const PLAYER_RADIUS: f32 = 14.0;
 /// Pixel-unit scroll deltas (browsers, touchpads) per tool step.
 const SCROLL_PIXELS_PER_STEP: f32 = 60.0;
 
@@ -27,9 +33,13 @@ pub struct Facing(pub Vec2);
 #[derive(Component, Debug)]
 pub struct Locked;
 
-/// The dark dot on the player showing where they face.
-#[derive(Component, Debug)]
-struct Visor;
+/// Whether the engineer is walking (WASD held and free to move), and the
+/// last direction they walked. Tools only work while not walking.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
+pub struct Movement {
+    pub walking: bool,
+    pub heading: Vec2,
+}
 
 /// What the player asked for. Written in `Update` from raw input, consumed
 /// by fixed-step gameplay so presses are never lost or doubled.
@@ -99,24 +109,24 @@ impl Plugin for PlayerPlugin {
                     .in_set(GameSet::Move)
                     .run_if(in_state(AppState::Playing)),
             )
-            .add_systems(Update, point_visor.in_set(GameSet::Present));
+            .add_plugins(sprite::EngineerSpritePlugin);
     }
 }
 
-fn spawn_player(mut commands: Commands, shapes: Res<Shapes>, mut intent: ResMut<PlayerIntent>) {
+fn spawn_player(mut commands: Commands, art: Res<Art>, mut intent: ResMut<PlayerIntent>) {
     *intent = PlayerIntent::default();
     commands.spawn((
         Player,
         RunEntity,
         Name::new("Player"),
         Facing(Vec2::X),
-        shapes.circle(PLAYER_RADIUS, palette::PLAYER),
+        Movement {
+            walking: false,
+            heading: Vec2::NEG_Y,
+        },
         at(layout::player_spawn(), 3.0),
-        children![(
-            Visor,
-            shapes.circle(6.0, Color::srgb(0.15, 0.10, 0.08)),
-            Transform::from_xyz(9.0, 0.0, 0.1),
-        )],
+        Visibility::default(),
+        children![sprite::engineer_sprite(&art)],
     ));
 }
 
@@ -225,16 +235,28 @@ fn move_player(
     time: Res<Time>,
     intent: Res<PlayerIntent>,
     colliders: Res<Colliders>,
-    mut players: Query<&mut Transform, (With<Player>, Without<Locked>)>,
+    doors: Query<&Door>,
+    mut players: Query<(&mut Transform, &mut Movement, Has<Locked>), With<Player>>,
 ) {
-    let delta = intent.direction.normalize_or_zero() * PLAYER_SPEED * time.delta_secs();
-    for mut transform in &mut players {
-        let next = move_circle(
-            transform.translation.truncate(),
-            delta,
-            PLAYER_RADIUS,
-            &colliders.0,
-        );
+    let dt = time.delta_secs();
+    let dir = intent.direction.normalize_or_zero();
+    for (mut transform, mut movement, locked) in &mut players {
+        let walking = !locked && dir != Vec2::ZERO;
+        if movement.walking != walking {
+            movement.walking = walking;
+        }
+        if !walking {
+            continue;
+        }
+        movement.heading = dir;
+        let pos = transform.translation.truncate();
+        let mut delta = dir * PLAYER_SPEED * dt;
+        let mut solid = colliders.0.clone();
+        for door in &doors {
+            delta += door_assist(pos, dir, door, dt);
+            solid.extend(door.leaf());
+        }
+        let next = move_circle(pos, delta, PLAYER_RADIUS, &solid);
         transform.translation = next.extend(transform.translation.z);
     }
 }
@@ -289,21 +311,6 @@ fn send_interact(
         // Several presses inside one tick still toggle only once.
         intent.interact_presses = 0;
         out.write(InteractPressed { target: focus.0 });
-    }
-}
-
-fn point_visor(
-    players: Query<(&Facing, &Children), With<Player>>,
-    mut visors: Query<&mut Transform, With<Visor>>,
-) {
-    for (facing, children) in &players {
-        for child in children {
-            if let Ok(mut t) = visors.get_mut(*child) {
-                let v = facing.0 * 9.0;
-                t.translation.x = v.x;
-                t.translation.y = v.y;
-            }
-        }
     }
 }
 

@@ -44,6 +44,10 @@ wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Window", "Location", "UrlSearchParams", "console"] }
 
+[dev-dependencies]
+# Unit tests check the art tables against the packs' manifest.json files.
+serde_json = "1"
+
 [lints.clippy]
 too_many_arguments = "allow"
 type_complexity = "allow"

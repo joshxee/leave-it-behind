@@ -14,13 +14,15 @@ Open **preview/index.html** for mouse aiming, animation playback, individual fra
 | Wrench use | 8 at 45° | 3 | 24 | 90 ms each; 270 ms once |
 | Tape held | 16 at 22.5° | 1 | 16 | Hold |
 | Tape use | 8 at 45° | 3 | 24 | 90 ms each; 270 ms once |
-| **Total** | | | **128** | |
+| Walk with wrench | 8 at 45° | 4 | 32 | 110 ms each; 440 ms loop |
+| Walk with tape | 8 at 45° | 4 | 32 | 110 ms each; 440 ms loop |
+| **Total** | | | **192** | |
 
 - `png/`: individual transparent **64 × 64** PNGs, with no trimming or antialiasing.
 - `engineer-16.gpl` and `engineer-16.pal`: GIMP/Aseprite and JASC palettes. **16 entries total: index 0 transparent, 15 opaque cold colours.** All 15 opaque colours are used across the set. GPL/JASC store RGB only; index 0 must be designated transparent when importing. PNG and Aseprite already store the transparency.
-- `engineer.aseprite`: editable indexed artwork; 128 frames, 72 correctly bounded animation tags, and a root slice. Art is flattened to one editable pixel layer per cel.
+- `engineer.aseprite`: editable indexed artwork, flattened to one editable pixel layer per cel, with correctly bounded animation tags and a root slice. It still holds the original 128 frames and 72 tags until the pending rebuild (see **Rebuild and audit**); the build then writes all 192 frames and 88 tags.
 - `manifest.json`: filenames, angles, timing, atlas indices, root, tool contacts and animation groups.
-- `engineer-atlas.png`: optional 1024 × 512 atlas, 16 columns × 8 rows, 64 × 64 cells. All cells are untrimmed.
+- `engineer-atlas.png`: 1024 × 768 atlas, 16 columns × 12 rows, 64 × 64 cells. The game loads this file. All cells are untrimmed.
 - `engineer-atlas.aseprite.json`: native Aseprite atlas metadata.
 - `preview/overview.png`: enlarged examples plus native-size dark/light floor checks.
 - `preview/motion.gif`: simultaneous eight-direction walk and tool-use proof on both floors.
@@ -59,6 +61,8 @@ Retain the previous facing when the aim vector is zero. Use 16 directions for id
 | Wrench use | `64 + dir8 * 3 + frame` |
 | Tape held | `88 + dir16` |
 | Tape use | `104 + dir8 * 3 + frame` |
+| Walk with wrench | `128 + dir8 * 4 + frame` |
+| Walk with tape | `160 + dir8 * 4 + frame` |
 
 ## Tool contact and use events
 
@@ -75,6 +79,8 @@ Compare that point with the bolt/wall interaction point, or compute `engineer_ro
 
 Use frame **1** (the middle frame) for the repair/application event. Wrench frames rock the handle about the bite and return; tape frames pull the tab, press with the spare glove, and recover. Play `0 → 1 → 2` once, then return to the held pose. Walking and tool use are mutually exclusive.
 
+The walk-with-tool actions (`wrench_walk`, `tape_walk`) keep the tool in hand while walking: the tool arm holds the tool exactly as in the held pose for that direction (same `contact_pixels`), the legs stride and the free arm swings. They were appended after the original 128 frames, so earlier atlas indices are unchanged. The game cuts cleanly between walking, holding and using: no tool is ever used mid-walk.
+
 ## Rebuild and audit
 
 From the repository root with the installed sprite-axi and the user's Aseprite binary configured:
@@ -86,6 +92,8 @@ node assets/characters/engineer/source/package-preview.cjs
 node --preserve-symlinks --preserve-symlinks-main assets/characters/engineer/source/validate.cjs
 ```
 
+**Pending rebuild:** the walk-with-tool frames were added by running this `build.lua` through a stand-in for the Aseprite API (no Aseprite on that machine). The PNGs, atlas, `manifest.json`, atlas JSON, `validation.json` and `preview-data.js` are current and pass `validate.cjs`. The original 128 frames are the committed originals, byte for byte. Still to refresh with real Aseprite: `engineer.aseprite` (still 128 frames) and `preview/overview.png` / `preview/motion.gif`. Run the four commands above once. The stand-in reproduced the original frames exactly, except 1–5 edge pixels on four 45° frames where platform `sin`/`cos` round differently.
+
 The validator reuses the installed sprite-axi PNG decoder. Set `PNGJS_PATH` to another installed `pngjs` module if moving the source to a different machine. The optional local preview server runs with `node assets/characters/engineer/source/serve.cjs` and binds only `127.0.0.1:4173`.
 
-Validation checks PNG counts, dimensions, binary alpha, palette membership, distinct poses/animation frames, fixed tool contacts, matching atlas pixels, animation tag ranges and slice pivot. Visual checks cover all directions at native size on both floor values. These are game assets and placement notes; the existing Bevy application has not been modified or run with them.
+Validation checks PNG counts, dimensions, binary alpha, palette membership, distinct poses/animation frames, fixed tool contacts, matching atlas pixels, animation tag ranges and slice pivot. Visual checks cover all directions at native size on both floor values. The game uses this pack through `src/art/engineer.rs` (see `src/art/README.md`); its unit tests check the atlas indices and tool contacts against `manifest.json`.

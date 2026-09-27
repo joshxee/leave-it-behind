@@ -13,6 +13,9 @@ Run everything: `scripts/test-all.sh` (or `/test-report`). It writes
 | Release smoke | a player build loads and runs | `e2e/specs/release-smoke.spec.ts` (`@release-smoke`) | below |
 
 Choose the lowest layer that can catch the bug. Logic belongs in unit tests.
+Layout-dependent tests derive positions and directions from the ship map
+(`ship::map`, `layout`, `Site`), never from coordinates: the layout will change.
+Art data (`src/art`) is unit-tested against the packs' `manifest.json` files.
 Anything that crosses plugins goes in an integration test. Use e2e only for
 what the player sees or does in the browser. `cargo nextest run` is an
 optional faster runner; plain `cargo test` must always work.
@@ -59,7 +62,8 @@ Helpers (`tests/integration/common.rs`):
 - `boot`, `frame` (one tick, then clears just-pressed like `InputPlugin`), `run_frames`,
   `run_until(app, max, pred)`, `secs(s)` (frames in `s` seconds), `state`.
 - Input: `press` / `release` / `tap` keys, `mouse_down` / `mouse_up` / `click`, `scroll`,
-  `aim_at(world_point)` (puts the cursor over a world point in the current room).
+  `aim_at(world_point)` (puts the cursor over a world point in the current room),
+  `key_toward(direction)` (the WASD key along a direction, e.g. through a door).
 - Setup only: `put_player`, `player_pos`.
 
 Rules:
@@ -143,8 +147,9 @@ cd e2e && npm ci && npx playwright test --grep-invert @visual   # serve-web.sh s
 Test bridge (`src/e2e_bridge.rs`, wasm + `--features e2e` only):
 `window.__bevyReady` after the first rendered frame in `Playing`, and
 `window.__bevyState`: state, tick, room, camera, player (position, facing,
-locked), focus, tool, tape, faults (kind, site, room, remaining, repair,
-position), loose bolts, nav marker, diagnostics view, alarm, run stats. The
+locked, walking, animation `pose` and facing `dir`), focus, tool, tape, faults
+(kind, site, room, remaining, repair, position), loose bolts, doors (position,
+frame, open), nav marker, diagnostics view, alarm, run stats. The
 full shape is `BevyState` in `e2e/specs/helpers.ts`. With `?freeze=1`,
 `window.__bevyStep(n)` advances exactly `n` fixed ticks (helper: `step(page, n)`).
 Under `e2e`, the canvas is fixed at 1280×720, the seed is fixed, and each frame
@@ -156,6 +161,7 @@ pixel, centered on the room), `averageColor` (tint checks without baselines).
 Rules: use real Playwright keyboard/mouse input (no JS-to-ECS backdoor). Every
 test attaches at least one screenshot, pass or fail, named
 `"<label>: <what it should show>"`. The report's screenshot index uses that text verbatim.
+Keep that name under about 200 characters: Playwright builds a file name from it.
 
 Template (`e2e/specs/<feature>.spec.ts`):
 

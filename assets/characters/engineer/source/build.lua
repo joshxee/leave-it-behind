@@ -189,7 +189,8 @@ local function draw(direction,action,frame)
  local ground=math.atan(math.sin(theta)/CY,math.cos(theta))
  fx,fy=math.cos(ground),math.sin(ground);rx,ry=fy,-fx
  buf,dep,ids,surfaces,parts={},{},{},{},{}
- local walk=action=='walk'
+ -- 'walk' is empty-handed; 'wrench_walk' / 'tape_walk' carry the tool in the held pose.
+ local walk=action:match('walk')~=nil
  local strides=walk and ({-3.5,0,3.5,0})[frame+1] or 0
  local tool=action:match('wrench') and 'wrench' or action:match('tape') and 'tape' or nil
  local use=action:match('_use')~=nil
@@ -261,7 +262,7 @@ local function sequence(action,d,n,duration)
   manifest.frames[#manifest.frames+1]={file='png/'..name,action=action,direction=dirs[d+1],direction_index=d,angle_degrees=d*22.5,frame=f,duration_ms=duration,aseprite_frame=fnum,atlas_index=fnum-1,atlas_rect={(fnum-1)%16*64,math.floor((fnum-1)/16)*64,64,64},contact_pixels=tip}
   names[#names+1]='png/'..name
  end
- manifest.animations[#manifest.animations+1]={name=action..'_'..dirs[d+1],files=names,loop=action=='walk',duration_ms=duration,from_frame=start,to_frame=fnum}
+ manifest.animations[#manifest.animations+1]={name=action..'_'..dirs[d+1],files=names,loop=action:match('walk')~=nil,duration_ms=duration,from_frame=start,to_frame=fnum}
 end
 local SAMPLE=app.params['sample']=='true'
 if SAMPLE then
@@ -274,6 +275,10 @@ else
  for _,tool in ipairs({'wrench','tape'}) do
   for d=0,15 do sequence(tool..'_hold',d,1,120) end
   for d=0,14,2 do sequence(tool..'_use',d,3,90) end
+ end
+ -- Walking with the tool in hand, appended so earlier atlas indices never move.
+ for _,tool in ipairs({'wrench','tape'}) do
+  for d=0,14,2 do sequence(tool..'_walk',d,4,110) end
  end
 end
 -- Tag only after all frames exist; Aseprite extends end tags on frame insertion.

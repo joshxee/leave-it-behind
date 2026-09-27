@@ -23,7 +23,7 @@ end
 local board=Sprite(960,708,ColorMode.INDEXED);board:setPalette(palette);img=Image(960,708,ColorMode.INDEXED)
 rect(0,0,960,708,1)
 text('DERELICT / ENGINEER',28,26,3,9)
-text('64 X 64  /  16 COLOURS  /  128 FRAMES',30,60,1,7)
+text('64 X 64  /  16 COLOURS  /  '..#manifest.frames..' FRAMES',30,60,1,7)
 text('01 / IDLE',30,104,2,13);text('02 / WRENCH',342,104,2,13);text('03 / TAPE',654,104,2,13)
 for k=0,2 do floor(24+k*312,132,288,256,k==1) end
 sprite('idle','se',0,40,132,4);sprite('wrench_hold','se',0,352,132,4);sprite('tape_hold','sw',0,664,132,4)
@@ -38,13 +38,13 @@ for i=0,15 do rect(28+i*22,681,18,12,i==0 and 2 or i) end
 text('FIXED ROOT 32,38 / OVERHEAD LIGHT',420,685,1,7)
 board:newCel(board.layers[1],1,img,Point(0,0));img:saveAs{filename=out..'preview/overview.png',palette=palette}
 -- Animation proof: all eight movement directions and both tools on both floors.
-local anim=Sprite(768,600,ColorMode.INDEXED);anim:setPalette(palette)
+local anim=Sprite(768,780,ColorMode.INDEXED);anim:setPalette(palette)
 for f=0,47 do
  if f>0 then anim:newEmptyFrame() end;anim.frames[f+1].duration=.09
- img=Image(768,600,ColorMode.INDEXED);rect(0,0,768,600,1)
+ img=Image(768,780,ColorMode.INDEXED);rect(0,0,768,780,1)
  text('MOTION PROOF / DARK AND LIGHT',20,18,2,9)
- local rows={{'walk',false},{'walk',true},{'wrench_use',false},{'wrench_use',true},{'tape_use',false},{'tape_use',true}}
- for row,v in ipairs(rows) do local y=55+(row-1)*90;floor(0,y,768,86,v[2]);local phase=v[1]=='walk' and math.floor(f*.09/.11)%4 or f%3
+ local rows={{'walk',false},{'walk',true},{'wrench_walk',false},{'tape_walk',true},{'wrench_use',false},{'wrench_use',true},{'tape_use',false},{'tape_use',true}}
+ for row,v in ipairs(rows) do local y=55+(row-1)*90;floor(0,y,768,86,v[2]);local phase=v[1]:match('walk') and math.floor(f*.09/.11)%4 or f%3
   for i,d in ipairs(dirs) do sprite(v[1],d,phase,(i-1)*96+16,y+2,1);text(d:upper(),(i-1)*96+43,y+74,1,v[2] and 2 or 7) end
  end
  anim:newCel(anim.layers[1],f+1,img,Point(0,0))

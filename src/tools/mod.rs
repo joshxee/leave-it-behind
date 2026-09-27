@@ -1,31 +1,30 @@
-//! Hand tools, held visibly at the end of the engineer's arm: the wrench and
-//! the tape roll. Number keys or the scroll wheel pick one; left click uses it.
+//! Hand tools, always in the engineer's hand (drawn by the engineer's
+//! sprite): the wrench and the tape roll. Number keys or the scroll wheel
+//! pick one; left click uses it, but only standing still. Walking stops any
+//! use at once (a turn is cancelled, tape stops).
 //!
-//! - Wrench: the head rests `WRENCH_REACH` ahead of the player and snaps (a
-//!   soft magnet) to any [`WrenchTarget`] within `SNAP_RADIUS`. A click on a
+//! - Wrench: its bite (where the sprite's jaw is, per facing) snaps (a soft
+//!   magnet) to any [`WrenchTarget`] within `SNAP_RADIUS`. A click on a
 //!   snapped target turns it for `WRENCH_TURN_SECS`, then sends
-//!   [`WrenchTightened`]. Pulling the head off the target cancels the turn.
-//! - Tape: while the button is held and the roll's tip touches a wall, tape
-//!   comes off the roll (one second of tape per second) and [`TapeLaid`] is
-//!   sent. Tape on bare wall is wasted; the roll is finite.
+//!   [`WrenchTightened`]. Pulling off the target cancels the turn.
+//! - Tape: while the button is held and the roll's edge touches a wall,
+//!   tape comes off the roll (one second of tape per second) and
+//!   [`TapeLaid`] is sent. Tape on bare wall is wasted; the roll is finite.
 
 use bevy::prelude::*;
 
-use crate::player::{Facing, Locked, Player, PlayerIntent};
+use crate::art::engineer::{contact, facing};
+use crate::player::{Facing, Locked, Movement, Player, PlayerIntent};
 use crate::shapes::{Shapes, at, rect};
 use crate::ship::Walls;
 use crate::ship::layout::{WallContact, wall_contact};
 use crate::{AppState, GameSet, RunEntity, RunSet, palette};
 
-/// Player center to the wrench head at rest.
-pub const WRENCH_REACH: f32 = 46.0;
-/// The head snaps to a target within this distance of its rest position.
+/// The bite snaps to a target within this distance of where it rests.
 pub const SNAP_RADIUS: f32 = 30.0;
 /// One click turns a bolt for this long.
 pub const WRENCH_TURN_SECS: f32 = 0.9;
-/// Player center to the tape roll.
-pub const TAPE_REACH: f32 = 36.0;
-/// The roll lays tape on a wall within this distance of it.
+/// The roll lays tape on a wall within this distance of its edge.
 pub const TAPE_CONTACT: f32 = 14.0;
 /// Seconds of taping on a full roll.
 pub const TAPE_CAPACITY: f32 = 20.0;
@@ -91,9 +90,9 @@ pub struct WrenchTurn {
 /// Where the held tool is this tick. Read by fault repairs and visuals.
 #[derive(Resource, Debug, Default, Clone)]
 pub struct ToolState {
-    /// Rest position of the tool's working end.
+    /// Where the tool's working end rests (the sprite's contact point).
     pub tip: Vec2,
-    /// Wrench head position after snapping (equals `tip` when not snapped).
+    /// Wrench bite after snapping (equals `tip` when not snapped).
     pub head: Vec2,
     /// Target the wrench head is snapped to.
     pub snap: Option<Entity>,
@@ -125,13 +124,9 @@ pub struct TapeLaid {
 #[derive(Component, Debug)]
 pub struct TapeStrip;
 
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-enum ToolPart {
-    WrenchHandle,
-    WrenchHead,
-    TapeRoll,
-    TapeRun,
-}
+/// The ring round the bolt the wrench is snapped to.
+#[derive(Component, Debug)]
+struct SnapRing;
 
 pub struct ToolsPlugin;
 
@@ -152,7 +147,7 @@ impl Plugin for ToolsPlugin {
                     .in_set(GameSet::Act)
                     .run_if(in_state(AppState::Playing)),
             )
-            .add_systems(Update, draw_tools.in_set(GameSet::Present));
+            .add_systems(Update, draw_snap.in_set(GameSet::Present));
     }
 }
 
@@ -164,29 +159,13 @@ fn reset_tools(
 ) {
     *belt = ToolBelt::default();
     *state = ToolState::default();
-    let parts = [
-        (
-            ToolPart::WrenchHandle,
-            rect(Vec2::new(30.0, 6.0), palette::STEEL),
-            3.1,
-        ),
-        (ToolPart::WrenchHead, shapes.ring(10.0, palette::STEEL), 3.2),
-        (ToolPart::TapeRoll, shapes.ring(12.0, palette::TAPE), 3.2),
-        (
-            ToolPart::TapeRun,
-            rect(Vec2::new(10.0, 5.0), palette::TAPE),
-            3.15,
-        ),
-    ];
-    for (part, sprite, z) in parts {
-        commands.spawn((
-            part,
-            RunEntity,
-            sprite,
-            at(Vec2::ZERO, z),
-            Visibility::Hidden,
-        ));
-    }
+    commands.spawn((
+        SnapRing,
+        RunEntity,
+        shapes.ring(13.0, palette::SNAP),
+        at(Vec2::ZERO, 3.2),
+        Visibility::Hidden,
+    ));
 }
 
 fn select_tool(
@@ -223,21 +202,30 @@ pub fn snap_target(
         .map(|(e, p, _)| (e, p))
 }
 
+/// Where the held tool's working end is for an engineer at `pos` facing
+/// `look` (16 directions standing, 8 walking, as the sprite draws it).
+pub fn tool_tip(tool: Tool, pos: Vec2, look: Vec2, walking: bool) -> Vec2 {
+    let dir16 = facing(look, if walking { 8 } else { 16 }).unwrap_or(0);
+    pos + contact(tool == Tool::Wrench, dir16)
+}
+
 fn aim_tool(
     belt: Res<ToolBelt>,
     mut state: ResMut<ToolState>,
-    players: Query<(&Transform, &Facing, Has<Locked>), With<Player>>,
+    players: Query<(&Transform, &Facing, &Movement, Has<Locked>), With<Player>>,
     targets: Query<(Entity, &WrenchTarget)>,
 ) {
-    let Some((transform, facing, locked)) = players.iter().next() else {
+    let Some((transform, facing, movement, locked)) = players.iter().next() else {
         return;
     };
-    let reach = match belt.held {
-        Tool::Wrench => WRENCH_REACH,
-        Tool::Tape => TAPE_REACH,
+    let look = if movement.walking {
+        movement.heading
+    } else {
+        facing.0
     };
-    state.tip = transform.translation.truncate() + facing.0 * reach;
-    let snapped = (belt.held == Tool::Wrench && !locked)
+    let pos = transform.translation.truncate();
+    state.tip = tool_tip(belt.held, pos, look, movement.walking);
+    let snapped = (belt.held == Tool::Wrench && !locked && !movement.walking)
         .then(|| snap_target(state.tip, targets.iter().map(|(e, t)| (e, t.pos))))
         .flatten();
     state.snap = snapped.map(|(e, _)| e);
@@ -249,11 +237,17 @@ fn use_wrench(
     belt: Res<ToolBelt>,
     mut intent: ResMut<PlayerIntent>,
     mut state: ResMut<ToolState>,
+    players: Query<&Movement, With<Player>>,
     mut out: MessageWriter<WrenchTightened>,
 ) {
     // Clicks never queue up: each tick consumes whatever arrived.
     let clicked = std::mem::take(&mut intent.use_presses) > 0;
     if belt.held != Tool::Wrench {
+        return;
+    }
+    // No tool use on the move: walking cancels a turn, and clicks are ignored.
+    if players.iter().any(|m| m.walking) {
+        state.turn = None;
         return;
     }
     let snap = state.snap;
@@ -286,11 +280,12 @@ fn use_tape(
     walls: Res<Walls>,
     mut belt: ResMut<ToolBelt>,
     mut state: ResMut<ToolState>,
-    players: Query<(), (With<Player>, Without<Locked>)>,
+    players: Query<&Movement, (With<Player>, Without<Locked>)>,
     mut out: MessageWriter<TapeLaid>,
 ) {
     state.taping = None;
-    if belt.held != Tool::Tape || !intent.use_held || belt.tape_left <= 0.0 || players.is_empty() {
+    let standing = players.iter().next().is_some_and(|m| !m.walking);
+    if belt.held != Tool::Tape || !intent.use_held || belt.tape_left <= 0.0 || !standing {
         return;
     }
     let Some(contact) = wall_contact(state.tip, TAPE_CONTACT, &walls.0) else {
@@ -312,101 +307,44 @@ fn use_tape(
     }
 }
 
-/// A strip along the wall at `contact`, angled a little differently each time.
+/// A strip stuck on the wall face at `contact`, angled a little differently
+/// each time.
 fn tape_strip(contact: WallContact, n: u32) -> (Sprite, Transform) {
     // Deterministic jitter in [-0.5, 0.5): cosmetic, so no RNG draw.
     let jitter = (n.wrapping_mul(2_654_435_761) % 1000) as f32 / 1000.0 - 0.5;
     let tangent = contact.normal.perp();
-    let pos = contact.point + contact.normal * 2.0 + tangent * jitter * 20.0;
-    let angle = tangent.to_angle() + jitter * 0.9;
+    let pos = contact.point - contact.normal * 3.0 + tangent * jitter * 20.0;
+    let angle = tangent.to_angle() + jitter * 0.5;
     (
         rect(Vec2::new(24.0, 8.0), palette::TAPE),
         Transform::from_translation(pos.extend(1.7)).with_rotation(Quat::from_rotation_z(angle)),
     )
 }
 
-/// How fast the drawn wrench head eases onto a snapped bolt (per second).
-const MAGNET_EASE: f32 = 25.0;
-
-fn draw_tools(
+/// The snapped bolt gets a ring, which fills in as the turn goes round.
+fn draw_snap(
     time: Res<Time>,
-    belt: Res<ToolBelt>,
     state: Res<ToolState>,
-    players: Query<(&Transform, Has<Locked>), With<Player>>,
-    mut parts: Query<(&ToolPart, &mut Transform, &mut Sprite, &mut Visibility), Without<Player>>,
-    mut pull: Local<Vec2>,
+    mut rings: Query<(&mut Transform, &mut Sprite, &mut Visibility), With<SnapRing>>,
 ) {
-    let Some((player, locked)) = players.iter().next() else {
-        return;
-    };
-    let pos = player.translation.truncate();
-    // Soft magnet: the drawn head slides toward the snapped bolt instead of
-    // jumping (the snap itself, and what a click turns, is exact).
-    let target = state.head - state.tip;
-    let eased = *pull + (target - *pull) * (1.0 - (-MAGNET_EASE * time.delta_secs()).exp());
-    *pull = eased;
-    let head = state.tip + *pull;
-    for (part, mut transform, mut sprite, mut visibility) in &mut parts {
-        let (held, from, to) = match part {
-            ToolPart::WrenchHandle => (belt.held == Tool::Wrench, pos, head),
-            ToolPart::WrenchHead => (belt.held == Tool::Wrench, head, head),
-            ToolPart::TapeRoll => (belt.held == Tool::Tape, state.tip, state.tip),
-            ToolPart::TapeRun => {
-                let run = state.taping.map(|c| c.point);
-                (run.is_some(), state.tip, run.unwrap_or(state.tip))
-            }
-        };
-        // Hands are on the joystick while at the helm.
-        let show = held && !locked;
-        *visibility = if show {
+    for (mut transform, mut sprite, mut visibility) in &mut rings {
+        let show = state.snap.is_some();
+        let want = if show {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
+        if *visibility != want {
+            *visibility = want;
+        }
         if !show {
             continue;
         }
-        let z = transform.translation.z;
-        match part {
-            ToolPart::WrenchHandle | ToolPart::TapeRun => {
-                // A bar from `from` to `to`, starting at the player's edge for the handle.
-                let dir = (to - from).normalize_or(Vec2::X);
-                let start = if *part == ToolPart::WrenchHandle {
-                    from + dir * 12.0
-                } else {
-                    from
-                };
-                let len = (to - start).length().max(2.0);
-                transform.translation = ((start + to) / 2.0).extend(z);
-                transform.rotation = Quat::from_rotation_z(dir.to_angle());
-                let thickness = if *part == ToolPart::WrenchHandle {
-                    6.0
-                } else {
-                    5.0
-                };
-                sprite.custom_size = Some(Vec2::new(len, thickness));
-            }
-            ToolPart::WrenchHead => {
-                transform.translation = to.extend(z);
-                sprite.color = match (state.turn, state.snap) {
-                    (Some(turn), _) => {
-                        palette::SNAP.mix(&palette::STEEL, turn.left / WRENCH_TURN_SECS)
-                    }
-                    (None, Some(_)) => palette::SNAP,
-                    (None, None) => palette::STEEL,
-                };
-            }
-            ToolPart::TapeRoll => {
-                transform.translation = to.extend(z);
-                let radius = 6.0 + 7.0 * (belt.tape_left / TAPE_CAPACITY).clamp(0.0, 1.0);
-                sprite.custom_size = Some(Vec2::splat(radius * 2.0));
-                sprite.color = if belt.tape_left > 0.0 {
-                    palette::TAPE
-                } else {
-                    palette::UI_DIM
-                };
-            }
-        }
+        transform.translation = state.head.extend(transform.translation.z);
+        let pulse = 0.75 + 0.25 * (time.elapsed_secs() * 6.0).sin();
+        let turned = state.turn.map_or(0.0, |t| 1.0 - t.left / WRENCH_TURN_SECS);
+        sprite.color = palette::SNAP.with_alpha(pulse * (1.0 - 0.6 * turned));
+        sprite.custom_size = Some(Vec2::splat(26.0 - 8.0 * turned));
     }
 }
 
@@ -441,6 +379,6 @@ mod tests {
             normal: Vec2::NEG_Y,
         };
         let (_, t) = tape_strip(contact, 3);
-        assert!((t.translation.y - 258.0).abs() < 1e-3);
+        assert!((t.translation.y - 263.0).abs() < 1e-3, "on the wall face");
     }
 }

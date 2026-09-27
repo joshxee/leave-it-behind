@@ -3,24 +3,29 @@
 //! active fault (each loose bolt, each breach, the helm) with its time left.
 //! It is the only place fault locations are shown. E again, or walking
 //! away from the console, closes it. Time keeps running while it is open.
+//! The console itself is the pack's diagnostic screen: dark until used.
 
 use bevy::prelude::*;
 
+use crate::art::Art;
+use crate::art::tiles::Tile;
 use crate::faults::bolts::Bolt;
 use crate::faults::{Fault, FaultKind};
 use crate::player::{Focus, InteractKind, InteractPressed, Interactable, Player};
-use crate::shapes::{at, rect};
-use crate::ship::RoomId;
-use crate::ship::layout::{self, HALF_HEIGHT, WALL};
+use crate::shapes::at;
+use crate::ship::layout::{self, ship};
+use crate::ship::{RoomId, room_frame, show_tile, z};
 use crate::{AppState, GameSet, RunSet, palette};
 
 /// Seconds between opening the screen and the faults appearing.
 pub const SCAN_SECS: f32 = 1.0;
 /// E works within this distance of the console's front edge.
 pub const CONSOLE_RANGE: f32 = 90.0;
+/// Seconds per frame of the console's live waveform.
+const SCREEN_FRAME_SECS: f32 = 0.35;
 
-/// Minimap size in UI pixels (the whole ship, walls included).
-const MAP_WIDTH: f32 = 1100.0;
+/// Largest minimap in UI pixels. The ship keeps its shape inside it.
+const MAP_MAX: Vec2 = Vec2::new(520.0, 440.0);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum DiagView {
@@ -54,7 +59,7 @@ pub struct Diagnostics {
 pub struct Reading {
     pub kind: FaultKind,
     pub room: RoomId,
-    pub label: &'static str,
+    pub label: String,
     pub remaining: f32,
     /// Exact positions (every loose bolt of a panel, the breach, the helm).
     pub points: Vec<Vec2>,
@@ -100,17 +105,32 @@ pub fn reading_line(r: &Reading) -> String {
     )
 }
 
+/// The ship's outline (every room and its walls) and the minimap's scale.
+fn map_frame() -> (Rect, f32) {
+    let hull = RoomId::ALL
+        .into_iter()
+        .map(room_frame)
+        .reduce(|a, b| a.union(b))
+        .expect("rooms");
+    let scale = (MAP_MAX.x / hull.width()).min(MAP_MAX.y / hull.height());
+    (hull, scale)
+}
+
 /// World position to minimap pixels (origin top left).
 pub fn to_map(p: Vec2) -> Vec2 {
-    let half = Vec2::new(layout::ship_length() / 2.0 + WALL, HALF_HEIGHT + WALL);
-    let scale = MAP_WIDTH / (half.x * 2.0);
-    Vec2::new((p.x + half.x) * scale, (half.y - p.y) * scale)
+    let (hull, scale) = map_frame();
+    Vec2::new((p.x - hull.min.x) * scale, (hull.max.y - p.y) * scale)
 }
 
-fn map_height() -> f32 {
-    to_map(Vec2::new(0.0, -HALF_HEIGHT - WALL)).y
+/// The minimap's size in UI pixels.
+pub fn map_size() -> Vec2 {
+    let (hull, scale) = map_frame();
+    hull.size() * scale
 }
 
+/// The console's screen tile.
+#[derive(Component)]
+struct ConsoleScreen;
 #[derive(Component)]
 struct DiagOverlay;
 #[derive(Component)]
@@ -145,27 +165,40 @@ impl Plugin for DiagnosticsPlugin {
                 scan.in_set(GameSet::Simulate)
                     .run_if(in_state(AppState::Playing)),
             )
-            .add_systems(Update, draw_overlay.in_set(GameSet::Present));
+            .add_systems(
+                Update,
+                (draw_overlay, light_console).in_set(GameSet::Present),
+            );
     }
 }
 
-fn spawn_console(mut commands: Commands) {
-    let console = layout::diag_console();
-    let screen = Rect::from_center_size(
-        console.center() + Vec2::new(0.0, 6.0),
-        Vec2::new(110.0, 22.0),
-    );
+fn spawn_console(mut commands: Commands, art: Res<Art>) {
+    let cell = ship().console_cell();
     commands.spawn((
-        rect(screen.size(), palette::DIAG_SCREEN),
-        at(screen.center(), 1.3),
+        ConsoleScreen,
+        art.tile(Tile::diagnostic(None)),
+        at(ship().center(cell), z::PROP),
     ));
     commands.spawn((
         Interactable {
             kind: InteractKind::Diagnostics,
             range: CONSOLE_RANGE,
         },
-        Transform::from_translation(Vec2::new(console.center().x, console.min.y).extend(0.0)),
+        Transform::from_translation(layout::console_point().extend(0.0)),
     ));
+}
+
+/// The console's screen: dark while closed, a live waveform while in use.
+fn light_console(
+    diag: Res<Diagnostics>,
+    time: Res<Time>,
+    mut screens: Query<&mut Sprite, With<ConsoleScreen>>,
+) {
+    let live = (diag.view != DiagView::Closed)
+        .then(|| (time.elapsed_secs() / SCREEN_FRAME_SECS) as usize % 2);
+    for mut sprite in &mut screens {
+        show_tile(&mut sprite, Tile::diagnostic(live));
+    }
 }
 
 fn reset(mut diag: ResMut<Diagnostics>) {
@@ -236,7 +269,7 @@ fn spawn_overlay(mut commands: Commands) {
                 ..default()
             },
             BackgroundColor(palette::UI_PANEL),
-            BorderColor::all(palette::DIAG_SCREEN),
+            BorderColor::all(palette::DIAG_FRAME),
             ChildOf(root),
         ))
         .id();
@@ -248,20 +281,32 @@ fn spawn_overlay(mut commands: Commands) {
         },
         ChildOf(panel),
         children![
-            text("SHIP DIAGNOSTICS", 22.0, palette::GOOD),
+            text("SHIP DIAGNOSTICS", 22.0, palette::UI_TITLE),
             (DiagStatus, text("", 22.0, palette::UI_TEXT)),
         ],
     ));
+    let body = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: px(18),
+                align_items: AlignItems::FlexStart,
+                ..default()
+            },
+            ChildOf(panel),
+        ))
+        .id();
+    let size = map_size();
     let map = commands
         .spawn((
             DiagMap,
             Node {
-                width: px(MAP_WIDTH),
-                height: px(map_height()),
+                width: px(size.x),
+                height: px(size.y),
                 ..default()
             },
-            BackgroundColor(palette::WALL),
-            ChildOf(panel),
+            BackgroundColor(palette::MAP_HULL),
+            ChildOf(body),
         ))
         .id();
     for room in RoomId::ALL {
@@ -278,9 +323,9 @@ fn spawn_overlay(mut commands: Commands) {
                 padding: UiRect::all(px(4)),
                 ..default()
             },
-            BackgroundColor(palette::FLOORS[room.index()]),
+            BackgroundColor(palette::MAP_ROOM),
             ChildOf(map),
-            children![text(room.name().to_uppercase(), 12.0, palette::UI_DIM)],
+            children![text(room.as_str().to_uppercase(), 11.0, palette::UI_DIM)],
         ));
     }
     commands.spawn((
@@ -292,11 +337,19 @@ fn spawn_overlay(mut commands: Commands) {
             border_radius: BorderRadius::MAX,
             ..default()
         },
-        BackgroundColor(palette::PLAYER),
+        BackgroundColor(palette::MAP_PLAYER),
         GlobalZIndex(22),
         ChildOf(map),
     ));
-    commands.spawn((DiagList, text("", 16.0, palette::UI_TEXT), ChildOf(panel)));
+    commands.spawn((
+        DiagList,
+        text("", 16.0, palette::UI_TEXT),
+        Node {
+            width: px(660),
+            ..default()
+        },
+        ChildOf(body),
+    ));
     commands.spawn((text("E  close", 14.0, palette::UI_DIM), ChildOf(panel)));
 }
 
@@ -394,11 +447,15 @@ mod tests {
 
     #[test]
     fn map_covers_the_whole_ship() {
-        let half = layout::ship_length() / 2.0 + WALL;
-        assert_eq!(to_map(Vec2::new(-half, HALF_HEIGHT + WALL)), Vec2::ZERO);
-        let bottom_right = to_map(Vec2::new(half, -HALF_HEIGHT - WALL));
-        assert!((bottom_right.x - MAP_WIDTH).abs() < 1e-3);
-        assert!((bottom_right.y - map_height()).abs() < 1e-3);
+        let (hull, _) = map_frame();
+        assert_eq!(to_map(Vec2::new(hull.min.x, hull.max.y)), Vec2::ZERO);
+        let bottom_right = to_map(Vec2::new(hull.max.x, hull.min.y));
+        assert!((bottom_right - map_size()).length() < 1e-3);
+        assert!(map_size().x <= MAP_MAX.x + 1e-3 && map_size().y <= MAP_MAX.y + 1e-3);
+        for site in Site::ALL {
+            let p = to_map(site.pos());
+            assert!(p.x >= 0.0 && p.y >= 0.0 && p.x <= map_size().x && p.y <= map_size().y);
+        }
     }
 
     #[test]
@@ -432,7 +489,11 @@ mod tests {
         assert_eq!(r[1].room, RoomId::Engine);
         assert_eq!(
             reading_line(&r[0]),
-            "HULL BREACH - Airlock, upper wall, rear - 15s left"
+            format!(
+                "HULL BREACH - Airlock, {} - 15s left",
+                Site::AirlockPortAft.label()
+            )
         );
+        assert_eq!(Site::AirlockPortAft.label(), "left wall, bottom");
     }
 }

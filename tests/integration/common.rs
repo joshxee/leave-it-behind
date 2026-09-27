@@ -165,3 +165,18 @@ pub fn run_until(app: &mut App, max: usize, mut done: impl FnMut(&mut App) -> bo
     }
     panic!("condition not reached within {max} frames");
 }
+
+/// The WASD key that walks toward `dir` along its dominant axis.
+pub fn key_toward(dir: Vec2) -> KeyCode {
+    if dir.x.abs() >= dir.y.abs() {
+        if dir.x > 0.0 {
+            KeyCode::KeyD
+        } else {
+            KeyCode::KeyA
+        }
+    } else if dir.y > 0.0 {
+        KeyCode::KeyW
+    } else {
+        KeyCode::KeyS
+    }
+}

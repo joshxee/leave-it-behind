@@ -6,15 +6,26 @@ test('wrench: click each loose bolt to fix the engine', async ({ page }, testInf
   try {
     await openGame(page, { scenario: 'bolts' });
     const start = await waitForState(page, (s) => s.looseBolts.length === 3 && s.snap);
-    await attachShot(page, testInfo, 'bolts-loose: upper engine with three orange bolts sticking out of its lower face, wrench head green (snapped) on the left one');
-    const bolts = [...start.looseBolts].sort((a, b) => a.x - b.x);
+    await attachShot(page, testInfo, 'bolts-loose: left engine with three orange bolts on its spine side, engineer beside the lowest one with the wrench jaw on it inside a cyan ring');
+    // The panel runs along the engine's side: walk along it from bolt to bolt.
+    const first = start.looseBolts[0];
+    const last = start.looseBolts[start.looseBolts.length - 1];
+    const vertical = Math.abs(last.y - first.y) > Math.abs(last.x - first.x);
+    const along = (p: { x: number; y: number }) => (vertical ? p.y : p.x);
+    const bolts = [...start.looseBolts].sort((a, b) => along(a) - along(b));
     for (const [i, bolt] of bolts.entries()) {
       const s = await gameState(page);
-      if (Math.abs(bolt.x - s.player.x) > 4) {
-        const key = bolt.x > s.player.x ? 'd' : 'a';
+      if (Math.abs(along(bolt) - along(s.player)) > 4) {
+        const ahead = along(bolt) > along(s.player);
+        const key = vertical ? (ahead ? 'w' : 's') : ahead ? 'd' : 'a';
         await page.keyboard.down(key);
-        await waitForState(page, (t, x) => Math.abs(x - t.player.x) <= 20, bolt.x);
+        await waitForState(
+          page,
+          (t, a) => Math.abs(a.target - (a.vertical ? t.player.y : t.player.x)) <= 20,
+          { target: along(bolt), vertical },
+        );
         await page.keyboard.up(key);
+        await waitForState(page, (t) => !t.player.walking);
       }
       await aimAt(page, bolt);
       const aimed = await waitForState(page, (t) => t.snap);
@@ -26,7 +37,7 @@ test('wrench: click each loose bolt to fix the engine', async ({ page }, testInf
     expect(done.stats.fixed).toBe(1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'bolts-fixed: all engine bolts grey and flush, engine block grey (not glowing)');
+    await attachShot(page, testInfo, 'bolts-fixed: all engine bolts grey and flush, engine block dark blue-grey (not glowing)');
   }
 });
 
@@ -39,7 +50,7 @@ test('tape: hold the button on the breach to seal it', async ({ page }, testInfo
     expect(breach.kind).toBe('HullBreach');
     expect(s.room).toBe('Airlock');
     await aimAt(page, breach);
-    await attachShot(page, testInfo, 'breach-open: airlock (purple floor), black hole in the upper wall with a white ring of escaping air, tape roll held under it');
+    await attachShot(page, testInfo, 'breach-open: airlock, torn hole in the left wall showing space, white ring of escaping air, engineer beside it holding the tape roll to the hole');
     await page.mouse.down();
     await waitForState(page, (t) => t.faults.length === 0);
     await page.mouse.up();
@@ -49,7 +60,7 @@ test('tape: hold the button on the breach to seal it', async ({ page }, testInfo
     expect(done.entities.tapeStrips).toBeGreaterThan(5);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'breach-sealed: tan tape strips over the spot, no hole or air ring left');
+    await attachShot(page, testInfo, 'breach-sealed: the hole replaced by a strapped grey patch plate, grey tape strips on the wall, no air ring');
   }
 });
 
@@ -58,7 +69,7 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
   try {
     await openGame(page, { scenario: 'drift' });
     await waitForState(page, (s) => s.focus === 'Helm' && !s.nav.inBand);
-    await attachShot(page, testInfo, 'drift: cockpit, nav marker off-centre and red, display frame blinking red');
+    await attachShot(page, testInfo, 'drift: cockpit, engineer at the pilot seat, nav display below with its marker off-centre (amber near the centre square, red further out), display frame blinking red');
     await page.keyboard.press('e');
     await waitForState(page, (s) => s.nav.engaged && s.player.locked);
 
@@ -72,7 +83,7 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
       if (Date.now() > deadline) throw new Error(`drift not fixed: ${JSON.stringify(s.nav)}`);
       if (!shotTaken && s.nav.inBand && s.faults[0].repair > 0.3) {
         shotTaken = true;
-        await attachShot(page, testInfo, 'steering: marker green inside the centre band, green hold bar growing along the display bottom');
+        await attachShot(page, testInfo, 'steering: engineer seated facing the window, marker larger and pale cyan inside the lit centre square, hold bar growing along the display bottom');
       }
       const want = new Set<string>();
       if (s.nav.x > 0.05) want.add('a');
@@ -89,7 +100,7 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
     expect(done.player.locked).toBe(false);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'drift-fixed: marker settling to the centre, display frame grey, engineer free');
+    await attachShot(page, testInfo, 'drift-fixed: marker settling to the centre, display frame steel blue, engineer free to walk');
   }
 });
 
@@ -102,11 +113,11 @@ test('diagnostics: E at the console pinpoints every fault', async ({ page }, tes
     await waitForState(page, (s) => s.diag === 'Scanning');
     const open = await waitForState(page, (s) => s.diag === 'Open');
     expect(open.diagUses).toBe(1);
-    await attachShot(page, testInfo, 'diagnostics: minimap of all five rooms, three red markers on the upper engine, one on the airlock upper wall, orange dot for the engineer in the quarters, list of two faults with seconds left');
+    await attachShot(page, testInfo, 'diagnostics: minimap of the five rooms stacked top to bottom, three red markers on the left engine, one on the airlock left wall, cyan dot for the engineer in the quarters, list of two faults with seconds left');
     await page.keyboard.press('e');
     await waitForState(page, (s) => s.diag === 'Closed');
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'diagnostics-closed: quarters again, no minimap, faint red alarm tint');
+    await attachShot(page, testInfo, 'diagnostics-closed: quarters again, the console screen dark, no minimap, faint red alarm tint');
   }
 });

@@ -1,244 +1,72 @@
-//! Ship geometry as plain data: rooms along the corridor spine, walls with
-//! door gaps, solid props, and the circle-vs-rectangle collision the player
-//! uses. No ECS here, so all of it is unit tested directly.
+//! Ship geometry the game asks for, derived from the map (`map.rs`), and the
+//! circle-vs-rectangle collision the player uses. No ECS here, so all of it
+//! is unit tested directly.
 //!
-//! World units are logical pixels at the 1280×720 reference view. The ship
-//! points right: the cockpit is the front (+x), the airlock the tail (−x).
-//! The spine is the line y = 0 through every door.
+//! World units are logical pixels at the 1280×720 reference view; one map
+//! cell is 64 units, y is up. Nothing here assumes which way the ship points.
 
 use bevy::prelude::*;
 
-/// Wall thickness.
-pub const WALL: f32 = 20.0;
-/// Half the interior height of every room.
-pub const HALF_HEIGHT: f32 = 260.0;
-/// Half the height of the door gap in each bulkhead, centered on the spine.
-pub const DOOR_HALF: f32 = 60.0;
+pub use super::map::{RoomId, WALL_HALF, ship};
+
 /// Smallest area the camera always shows (the reference window size).
 pub const VIEW: Vec2 = Vec2::new(1280.0, 720.0);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RoomId {
-    Cockpit,
-    Quarters,
-    Engine,
-    Hull,
-    Airlock,
-}
-
-/// Rooms in spatial order, tail (−x) to front (+x).
-const TAIL_TO_FRONT: [RoomId; 5] = [
-    RoomId::Airlock,
-    RoomId::Hull,
-    RoomId::Engine,
-    RoomId::Quarters,
-    RoomId::Cockpit,
-];
-
-impl RoomId {
-    /// Front to tail.
-    pub const ALL: [RoomId; 5] = [
-        RoomId::Cockpit,
-        RoomId::Quarters,
-        RoomId::Engine,
-        RoomId::Hull,
-        RoomId::Airlock,
-    ];
-
-    /// Position in [`RoomId::ALL`] (0 = cockpit).
-    pub fn index(self) -> usize {
-        self as usize
-    }
-
-    /// Stable identifier (test bridge, logs).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RoomId::Cockpit => "Cockpit",
-            RoomId::Quarters => "Quarters",
-            RoomId::Engine => "Engine",
-            RoomId::Hull => "Hull",
-            RoomId::Airlock => "Airlock",
-        }
-    }
-
-    /// Player-facing name.
-    pub fn name(self) -> &'static str {
-        match self {
-            RoomId::Cockpit => "Cockpit",
-            RoomId::Quarters => "Engineer's quarters",
-            RoomId::Engine => "Engine room",
-            RoomId::Hull => "Main hull",
-            RoomId::Airlock => "Airlock",
-        }
-    }
-
-    /// Interior width along the spine.
-    pub fn width(self) -> f32 {
-        match self {
-            RoomId::Cockpit => 700.0,
-            RoomId::Quarters => 800.0,
-            RoomId::Engine => 1000.0,
-            RoomId::Hull => 1100.0,
-            RoomId::Airlock => 700.0,
-        }
-    }
-
-    /// Walkable interior (inside the walls).
-    pub fn interior(self) -> Rect {
-        let mut x = -ship_length() / 2.0;
-        for room in TAIL_TO_FRONT {
-            if room == self {
-                return Rect::new(x, -HALF_HEIGHT, x + room.width(), HALF_HEIGHT);
-            }
-            x += room.width() + WALL;
-        }
-        unreachable!("every room is in TAIL_TO_FRONT")
-    }
-
-    /// Where the camera looks while the player is in this room.
-    pub fn center(self) -> Vec2 {
-        self.interior().center()
-    }
-
-    /// The room owning world x: rooms meet at the middle of each bulkhead.
-    pub fn at(x: f32) -> RoomId {
-        for pair in TAIL_TO_FRONT.windows(2) {
-            if x < pair[0].interior().max.x + WALL / 2.0 {
-                return pair[0];
-            }
-        }
-        RoomId::Cockpit
-    }
-}
-
-/// Interior length of the ship from the tail wall to the front wall.
-pub fn ship_length() -> f32 {
-    TAIL_TO_FRONT.iter().map(|r| r.width()).sum::<f32>() + WALL * (TAIL_TO_FRONT.len() - 1) as f32
-}
-
-/// Outer walls and bulkheads (with door gaps). Tape sticks to these.
+/// Walls, locked doors and door jambs. Tape sticks to these.
 pub fn walls() -> Vec<Rect> {
-    let half = ship_length() / 2.0;
-    let (min, max) = (
-        Vec2::new(-half - WALL, -HALF_HEIGHT - WALL),
-        Vec2::new(half + WALL, HALF_HEIGHT + WALL),
-    );
-    let mut walls = vec![
-        Rect::new(min.x, HALF_HEIGHT, max.x, max.y),
-        Rect::new(min.x, min.y, max.x, -HALF_HEIGHT),
-        Rect::new(min.x, min.y, -half, max.y),
-        Rect::new(half, min.y, max.x, max.y),
-    ];
-    for pair in TAIL_TO_FRONT.windows(2) {
-        let x0 = pair[0].interior().max.x;
-        walls.push(Rect::new(x0, DOOR_HALF, x0 + WALL, HALF_HEIGHT));
-        walls.push(Rect::new(x0, -HALF_HEIGHT, x0 + WALL, -DOOR_HALF));
-    }
-    walls
+    ship().walls().to_vec()
 }
 
 /// Solid furniture the player walks around.
 pub fn props() -> Vec<Rect> {
-    let mut props = vec![
-        port_engine(),
-        starboard_engine(),
-        diag_console(),
-        bunk(),
-        Rect::from_center_size(joystick(), Vec2::splat(24.0)),
-    ];
-    props.extend(crates());
-    props
+    ship().props().to_vec()
 }
 
-/// Everything the player collides with.
+/// Everything static the player collides with. Door leaves move, so the
+/// player adds the closed ones itself (`ship::doors`).
 pub fn colliders() -> Vec<Rect> {
     let mut all = walls();
     all.extend(props());
     all
 }
 
-/// Where the player starts each run: the engineer's quarters, on the spine.
+/// Where the player starts each run.
 pub fn player_spawn() -> Vec2 {
-    Vec2::new(RoomId::Quarters.center().x - 90.0, 0.0)
+    ship().spawn()
 }
 
-pub const ENGINE_SIZE: Vec2 = Vec2::new(400.0, 110.0);
-/// Distance from the spine to each engine block's center.
-const ENGINE_OFFSET: f32 = 145.0;
-
-/// Upper engine block (port side when the ship points right).
-pub fn port_engine() -> Rect {
-    Rect::from_center_size(
-        Vec2::new(RoomId::Engine.center().x, ENGINE_OFFSET),
-        ENGINE_SIZE,
-    )
-}
-
-/// Lower engine block.
-pub fn starboard_engine() -> Rect {
-    Rect::from_center_size(
-        Vec2::new(RoomId::Engine.center().x, -ENGINE_OFFSET),
-        ENGINE_SIZE,
-    )
-}
-
-/// Where the player stands (locked) while at the helm.
+/// Where the player sits (locked) while at the helm.
 pub fn helm_seat() -> Vec2 {
-    Vec2::new(RoomId::Cockpit.interior().min.x + 415.0, 0.0)
+    ship().helm().seat
 }
 
-/// The nav joystick: pressing E near it takes the helm.
+/// The nav joystick in front of the seat: E near the seat takes the helm.
 pub fn joystick() -> Vec2 {
-    helm_seat() + Vec2::new(40.0, 0.0)
+    ship().helm().joystick
 }
 
-/// The nav display in front of the helm (not solid: it is a floor display).
+/// The nav display (not solid: it is on the floor).
 pub fn nav_screen() -> Rect {
-    Rect::from_center_size(
-        Vec2::new(RoomId::Cockpit.interior().max.x - 115.0, 0.0),
-        Vec2::splat(190.0),
-    )
+    ship().block('N').expect("the map has a nav display")
 }
 
-/// The diagnostic console against the quarters' upper wall.
-pub fn diag_console() -> Rect {
-    let top = RoomId::Quarters.interior().max.y;
-    Rect::from_center_size(
-        Vec2::new(RoomId::Quarters.center().x, top - 22.5),
-        Vec2::new(140.0, 45.0),
-    )
+/// Engine blocks (port and starboard, as marked in the map).
+pub fn port_engine() -> Rect {
+    ship().block('P').expect("the map has a port engine")
 }
 
-/// The engineer's bunk, lower left of the quarters.
+pub fn starboard_engine() -> Rect {
+    ship().block('S').expect("the map has a starboard engine")
+}
+
+/// The engineer's bunk.
 pub fn bunk() -> Rect {
-    let room = RoomId::Quarters.interior();
-    Rect::new(
-        room.min.x + 20.0,
-        room.min.y + 5.0,
-        room.min.x + 180.0,
-        room.min.y + 75.0,
-    )
+    ship().block('b').expect("the map has a bunk")
 }
 
-/// Cargo in the main hull, clear of the spine and the walls.
-pub fn crates() -> [Rect; 2] {
-    let c = RoomId::Hull.center();
-    [
-        Rect::from_center_size(c + Vec2::new(-230.0, 110.0), Vec2::new(110.0, 90.0)),
-        Rect::from_center_size(c + Vec2::new(220.0, -120.0), Vec2::new(130.0, 90.0)),
-    ]
-}
-
-/// The outer airlock hatch on the tail wall (decoration; spacewalks are out of scope).
-pub fn hatch() -> Rect {
-    let x = -ship_length() / 2.0;
-    Rect::new(x - WALL, -70.0, x, 70.0)
-}
-
-/// The cockpit window in the front wall (decoration).
-pub fn window() -> Rect {
-    let x = ship_length() / 2.0;
-    Rect::new(x, -200.0, x + WALL, 200.0)
+/// Where E works the diagnostic console (its front edge).
+pub fn console_point() -> Vec2 {
+    ship().console_point()
 }
 
 /// Pushes a circle out of every rectangle it overlaps. A few passes settle
@@ -335,72 +163,83 @@ pub fn wall_contact(p: Vec2, max_dist: f32, walls: &[Rect]) -> Option<WallContac
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ship::map::Kind;
 
-    const R: f32 = 18.0;
+    const R: f32 = 14.0;
 
-    #[test]
-    fn rooms_run_front_to_tail_without_overlap() {
-        let mut last_min = f32::INFINITY;
-        for room in RoomId::ALL {
-            let i = room.interior();
-            assert!(i.max.x + WALL <= last_min + 1e-3, "{room:?} overlaps");
-            last_min = i.min.x;
-            assert!(
-                i.width() + 2.0 * WALL <= VIEW.x,
-                "{room:?} wider than the view"
-            );
-            assert_eq!(RoomId::at(i.center().x), room);
+    /// The path through every door, front to tail: the helm seat, each door
+    /// in order of distance from it, then just inside the locked hatch.
+    fn spine() -> Vec<Vec2> {
+        let seat = helm_seat();
+        let mut doors = ship().doors();
+        doors.sort_by(|a, b| a.center.distance(seat).total_cmp(&b.center.distance(seat)));
+        let mut points = vec![seat];
+        for door in &doors {
+            if door.locked {
+                let steps = if door.across_x {
+                    [IVec2::new(0, -1), IVec2::new(0, 1)]
+                } else {
+                    [IVec2::new(-1, 0), IVec2::new(1, 0)]
+                };
+                let step = steps
+                    .into_iter()
+                    .find(|s| ship().kind_at(door.cell + *s) == Kind::Floor)
+                    .expect("a room in front of the hatch");
+                let inward = Vec2::new(step.x as f32, -step.y as f32);
+                points.push(door.center + inward * (WALL_HALF + R + 1.0));
+            } else {
+                points.push(door.center);
+            }
         }
+        points
     }
 
     #[test]
-    fn room_boundary_is_the_middle_of_the_bulkhead() {
-        let q = RoomId::Quarters.interior();
-        assert_eq!(RoomId::at(q.max.x + WALL / 2.0 - 0.1), RoomId::Quarters);
-        assert_eq!(RoomId::at(q.max.x + WALL / 2.0 + 0.1), RoomId::Cockpit);
-        assert_eq!(RoomId::at(-10_000.0), RoomId::Airlock);
-        assert_eq!(RoomId::at(10_000.0), RoomId::Cockpit);
-    }
-
-    #[test]
-    fn spine_is_clear_from_the_helm_to_the_tail() {
+    fn the_spine_is_clear_from_the_helm_to_the_tail() {
         let colliders = colliders();
-        let mut x = -ship_length() / 2.0 + R;
-        while x <= helm_seat().x {
-            let p = Vec2::new(x, 0.0);
-            assert_eq!(resolve_circle(p, R, &colliders), p, "blocked at x = {x}");
-            x += 5.0;
+        for pair in spine().windows(2) {
+            let steps = (pair[0].distance(pair[1]) / 5.0).ceil() as usize;
+            for i in 0..=steps {
+                let p = pair[0].lerp(pair[1], i as f32 / steps.max(1) as f32);
+                assert_eq!(resolve_circle(p, R, &colliders), p, "blocked at {p}");
+            }
         }
     }
 
     #[test]
     fn spawn_is_free_and_in_the_quarters() {
         let spawn = player_spawn();
-        assert_eq!(RoomId::at(spawn.x), RoomId::Quarters);
+        assert_eq!(RoomId::at(spawn), RoomId::Quarters);
         assert_eq!(resolve_circle(spawn, R, &colliders()), spawn);
     }
 
     #[test]
-    fn walls_block_outside_the_door() {
+    fn walls_block_beside_a_door() {
         let walls = walls();
-        let bulkhead_x = RoomId::Quarters.interior().max.x + WALL / 2.0;
-        let mut p = Vec2::new(bulkhead_x - 40.0, 150.0);
-        for _ in 0..60 {
-            p = move_circle(p, Vec2::new(7.0, 0.0), R, &walls);
+        for door in ship().doors() {
+            let across = if door.across_x { Vec2::Y } else { Vec2::X };
+            let along = across.perp();
+            // One cell along the wall from the door, walking straight at it.
+            let mut p = door.center + along * 64.0 + across * 50.0;
+            for _ in 0..60 {
+                p = move_circle(p, -across * 7.0, R, &walls);
+            }
+            let gone_through = (p - door.center).dot(across);
+            assert!(
+                gone_through > WALL_HALF,
+                "went through the wall at {door:?}: {p}"
+            );
         }
-        assert!(
-            p.x < bulkhead_x - WALL / 2.0,
-            "went through the bulkhead: {p}"
-        );
     }
 
     #[test]
     fn sliding_along_a_wall_keeps_the_parallel_motion() {
         let walls = walls();
-        let start = Vec2::new(0.0, HALF_HEIGHT - R);
+        let hull = RoomId::Hull.interior();
+        let start = Vec2::new(hull.center().x + 200.0, hull.max.y - R);
         let end = move_circle(start, Vec2::new(5.0, 5.0), R, &walls);
         assert!(
-            (end.x - 5.0).abs() < 1e-3 && (end.y - start.y).abs() < 1e-3,
+            (end.x - start.x - 5.0).abs() < 1e-3 && (end.y - start.y).abs() < 1e-3,
             "{end}"
         );
     }
@@ -410,25 +249,33 @@ mod tests {
         let colliders = colliders();
         let seat = helm_seat();
         assert_eq!(resolve_circle(seat, R, &colliders), seat);
-        let below_console = Vec2::new(diag_console().center().x, diag_console().min.y - R - 5.0);
-        assert_eq!(resolve_circle(below_console, R, &colliders), below_console);
+        let stand = console_point() - Vec2::Y * (R + 5.0);
+        assert_eq!(resolve_circle(stand, R, &colliders), stand);
     }
 
     #[test]
-    fn engine_gaps_fit_the_player() {
+    fn there_is_room_to_walk_round_the_engines() {
         let colliders = colliders();
-        let gap = Vec2::new(
-            port_engine().center().x,
-            (port_engine().max.y + HALF_HEIGHT) / 2.0,
-        );
-        assert_eq!(resolve_circle(gap, R, &colliders), gap);
+        let room = RoomId::Engine.interior();
+        for engine in [port_engine(), starboard_engine()] {
+            let c = engine.center();
+            for p in [
+                Vec2::new(c.x, (engine.max.y + room.max.y) / 2.0),
+                Vec2::new(c.x, (engine.min.y + room.min.y) / 2.0),
+                Vec2::new(engine.min.x - 2.0 * R, c.y),
+                Vec2::new(engine.max.x + 2.0 * R, c.y),
+            ] {
+                assert_eq!(resolve_circle(p, R, &colliders), p, "{engine:?} at {p}");
+            }
+        }
     }
 
     #[test]
     fn contact_inside_a_wall_snaps_to_the_inner_face() {
-        let c = wall_contact(Vec2::new(0.0, HALF_HEIGHT + 4.0), 16.0, &walls()).unwrap();
-        assert_eq!(c.point, Vec2::new(0.0, HALF_HEIGHT));
-        assert_eq!(c.normal, Vec2::NEG_Y);
+        let mark = ship().wall_mark('7').expect("a breach point");
+        let c = wall_contact(mark.point - mark.normal * 4.0, 16.0, &walls()).unwrap();
+        assert!(c.point.distance(mark.point) < 1e-3, "{c:?}");
+        assert_eq!(c.normal, mark.normal);
     }
 
     #[test]

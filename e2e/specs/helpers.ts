@@ -19,7 +19,17 @@ export type BevyState = {
   room: string;
   /** Center of the current room: the camera's (unshaken) position. */
   camera: { x: number; y: number };
-  player: { x: number; y: number; fx: number; fy: number; locked: boolean };
+  /** `pose` is the engineer's animation (`wrench_walk`, `tape_use`, ...), `dir` its facing (0 = east, clockwise, 16 steps). */
+  player: {
+    x: number;
+    y: number;
+    fx: number;
+    fy: number;
+    locked: boolean;
+    walking: boolean;
+    pose: string;
+    dir: number;
+  };
   focus: 'Helm' | 'Diagnostics' | null;
   tool: 'Wrench' | 'Tape';
   tape: number;
@@ -30,6 +40,8 @@ export type BevyState = {
   journey: { elapsed: number; remaining: number; duration: number };
   faults: FaultState[];
   looseBolts: { x: number; y: number }[];
+  /** Sliding doors: `frame` 0 (closed) to 3 (open, the only passable frame). */
+  doors: { x: number; y: number; frame: number; open: boolean }[];
   nav: { engaged: boolean; x: number; y: number; inBand: boolean };
   diag: 'Closed' | 'Scanning' | 'Open';
   diagUses: number;

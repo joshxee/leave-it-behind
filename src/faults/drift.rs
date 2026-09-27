@@ -53,7 +53,7 @@ fn marker_half() -> Vec2 {
     layout::nav_screen().half_size() - Vec2::splat(8.0)
 }
 
-/// Just outside the band: the marker turns amber so the player knows green is close.
+/// Just outside the band: the marker turns amber so the player knows the band is close.
 pub const NEAR_MARGIN: f32 = 0.15;
 
 pub fn near_band(marker: Vec2) -> bool {
@@ -126,7 +126,7 @@ fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
     let c = screen.center();
     commands.spawn((
         NavPart::Frame,
-        rect(screen.size() + 8.0, palette::PROP),
+        rect(screen.size() + 8.0, palette::NAV_FRAME),
         at(c, 1.1),
     ));
     commands.spawn((rect(screen.size(), palette::NAV_SCREEN), at(c, 1.12)));
@@ -171,13 +171,16 @@ fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
             kind: InteractKind::Helm,
             range: HELM_RANGE,
         },
-        shapes.circle(16.0, palette::JOYSTICK_BASE),
+        shapes.circle(12.0, palette::JOYSTICK_BASE),
         at(joystick, 1.3),
     ));
-    commands.spawn((shapes.ring(16.0, palette::STEEL), at(joystick, 1.32)));
+    commands.spawn((
+        shapes.ring(12.0, palette::JOYSTICK_RING),
+        at(joystick, 1.32),
+    ));
     commands.spawn((
         NavPart::Stick,
-        shapes.circle(8.0, palette::JOYSTICK),
+        shapes.circle(6.0, palette::JOYSTICK),
         at(joystick, 1.35),
     ));
 }
@@ -276,13 +279,13 @@ fn draw_nav(
                 sprite.color = if alarm && blink {
                     palette::NAV_ALERT
                 } else {
-                    palette::PROP
+                    palette::NAV_FRAME
                 };
             }
             NavPart::Marker => {
                 let p = screen.center() + nav.marker * half;
                 transform.translation = p.extend(transform.translation.z);
-                // Red far off, amber close, green inside (and bigger).
+                // Red far off, amber close, the calm pale cyan inside (and bigger).
                 sprite.color = if !alarm {
                     palette::NAV_MARKER
                 } else if near {
