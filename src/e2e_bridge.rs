@@ -20,6 +20,7 @@ use bevy::time::TimeSystems;
 use wasm_bindgen::prelude::*;
 
 use crate::alarm::Alarm;
+use crate::coach::{Coach, lines};
 use crate::determinism::FixedTick;
 use crate::diagnostics::Diagnostics;
 use crate::faults::Fault;
@@ -30,6 +31,7 @@ use crate::menu::{Menu, MenuCtx, MenuRow, content};
 use crate::player::sprite::EngineerSprite;
 use crate::player::{Facing, Focus, InteractKind, Locked, Movement, Player};
 use crate::ship::doors::Door;
+use crate::ship::layout::console_point;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
 use crate::ui::Notices;
@@ -149,6 +151,7 @@ struct Snapshot<'w, 's> {
     diag: Res<'w, Diagnostics>,
     alarm: Res<'w, Alarm>,
     stats: Res<'w, RunStats>,
+    coach: Res<'w, Coach>,
     players: Query<
         'w,
         's,
@@ -259,13 +262,34 @@ fn progress_json(s: &Snapshot) -> String {
 fn settings_json(s: &Snapshot) -> String {
     let settings = s.menu_ctx.settings();
     format!(
-        r#"{{"shake":{},"flash":{},"controlsHint":{},"pauseUnfocused":{},"fullscreen":{},"vsync":{}}}"#,
+        r#"{{"shake":{},"flash":{},"controlsHint":{},"tips":{},"pauseUnfocused":{},"fullscreen":{},"vsync":{}}}"#,
         settings.shake,
         settings.flash,
         settings.controls_hint,
+        settings.tips_on(),
         settings.pause_unfocused,
         settings.fullscreen,
         settings.vsync
+    )
+}
+
+/// What the coaching panel says (empty outside a flight, as on screen).
+fn coach_json(s: &Snapshot) -> String {
+    let shown = if *s.state.get() == AppState::Playing {
+        lines(
+            &s.coach,
+            &s.journey,
+            &s.menu_ctx.settings().tips_seen,
+            &s.faults,
+        )
+    } else {
+        Vec::new()
+    };
+    let shown: Vec<String> = shown.into_iter().map(js_str).collect();
+    format!(
+        r#"{{"active":{},"lines":[{}]}}"#,
+        s.coach.active,
+        shown.join(",")
     )
 }
 
@@ -343,6 +367,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         )
     });
     let notice = s.notices.current().map_or("null".to_string(), js_str);
+    let console = console_point();
     format!(
         concat!(
             r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"lastRun":{},"notice":{},"#,
@@ -350,7 +375,8 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
             r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"tapeContact":{},"strips":{},"#,
-            r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1}}},"#,
+            r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1},"launched":{}}},"#,
+            r#""coach":{},"console":{{"x":{:.1},"y":{:.1}}},"#,
             r#""faults":[{}],"looseBolts":[{}],"doors":[{}],"#,
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
@@ -390,6 +416,10 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.journey.elapsed,
         s.journey.remaining(),
         s.journey.duration,
+        s.journey.launched,
+        coach_json(s),
+        console.x,
+        console.y,
         faults,
         bolts,
         doors,

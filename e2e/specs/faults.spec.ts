@@ -1,42 +1,18 @@
 import { expect, type Page, test } from '@playwright/test';
-import { aimAt, attachShot, type BevyState, collectErrors, gameState, openGame, toScreen, waitForState } from './helpers';
+import { aimAt, attachShot, type BevyState, collectErrors, gameState, openGame, turnLooseBolts, waitForState } from './helpers';
 
 test('wrench: click each loose bolt to fix the engine', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
   try {
     await openGame(page, { scenario: 'bolts' });
-    const start = await waitForState(page, (s) => s.looseBolts.length === 3 && s.snap);
+    await waitForState(page, (s) => s.looseBolts.length === 3 && s.snap);
     await attachShot(page, testInfo, 'bolts-loose: left engine with three exposed threaded bolts on its spine side, engineer beside the lowest one with the wrench jaw on it inside a cyan ring');
-    // The panel runs along the engine's side: walk along it from bolt to bolt.
-    const first = start.looseBolts[0];
-    const last = start.looseBolts[start.looseBolts.length - 1];
-    const vertical = Math.abs(last.y - first.y) > Math.abs(last.x - first.x);
-    const along = (p: { x: number; y: number }) => (vertical ? p.y : p.x);
-    const bolts = [...start.looseBolts].sort((a, b) => along(a) - along(b));
-    for (const [i, bolt] of bolts.entries()) {
-      const s = await gameState(page);
-      if (Math.abs(along(bolt) - along(s.player)) > 4) {
-        const ahead = along(bolt) > along(s.player);
-        const key = vertical ? (ahead ? 'w' : 's') : ahead ? 'd' : 'a';
-        await page.keyboard.down(key);
-        await waitForState(
-          page,
-          (t, a) => Math.abs(a.target - (a.vertical ? t.player.y : t.player.x)) <= 20,
-          { target: along(bolt), vertical },
-        );
-        await page.keyboard.up(key);
-        await waitForState(page, (t) => !t.player.walking);
-      }
-      await aimAt(page, bolt);
-      const aimed = await waitForState(page, (t) => t.snap);
-      const at = toScreen(aimed, bolt);
-      await page.mouse.click(at.x, at.y);
+    await turnLooseBolts(page, async (i) => {
       if (i === 0) {
         await waitForState(page, (t) => t.turning);
         await attachShot(page, testInfo, "bolt-turning: exposed threaded shaft retracting as the hex head turns into its socket");
       }
-      await waitForState(page, (t, n) => t.looseBolts.length === n, bolts.length - i - 1);
-    }
+    });
     const done = await waitForState(page, (s) => s.faults.length === 0);
     expect(done.stats.fixed).toBe(1);
     expect(errors).toEqual([]);

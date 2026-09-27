@@ -34,6 +34,9 @@ Start from a scenario natively with `SCENARIO=bolts cargo run --features dev,e2e
 3. Wait until `curl -sf http://localhost:4173/index.html` succeeds. The URL is `http://localhost:4173`.
    Query params: `?scenario=<name>` (see `src/scenarios/`; any scenario skips the
    title screen), `?freeze=1`. Without a scenario the game starts on the title.
+   A flight started from there with fresh saves (every capture) is a first
+   flight: the countdown holds until E at the diagnostic console finishes a
+   scan (`src/coach/README.md`). Scenarios skip that, except `first_flight`.
 
 ## Drive it
 

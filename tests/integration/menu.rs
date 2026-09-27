@@ -276,8 +276,9 @@ fn settings_change_with_the_arrow_keys() {
     key(&mut app, KeyCode::ArrowDown);
     key(&mut app, KeyCode::Enter);
     assert!(!app.world().resource::<Settings>().controls_hint);
-    // RESET SETTINGS puts everything back.
-    for _ in 0..4 {
+    // RESET SETTINGS (below TIPS, PAUSE WHEN UNFOCUSED, FULLSCREEN and
+    // VSYNC) puts everything back.
+    for _ in 0..5 {
         key(&mut app, KeyCode::ArrowDown);
     }
     key(&mut app, KeyCode::Enter);

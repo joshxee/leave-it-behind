@@ -8,6 +8,7 @@ use bevy::window::WindowResolution;
 
 pub mod alarm;
 pub mod art;
+pub mod coach;
 pub mod determinism;
 pub mod diagnostics;
 #[cfg(all(feature = "e2e", target_arch = "wasm32"))]
@@ -61,6 +62,7 @@ impl Plugin for GamePlugin {
                 diagnostics::DiagnosticsPlugin,
                 alarm::AlarmPlugin,
                 ui::UiPlugin,
+                coach::CoachPlugin,
                 menu::MenuPlugin,
                 scenarios::ScenarioPlugin,
                 version::VersionPlugin,

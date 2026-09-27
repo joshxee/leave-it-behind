@@ -24,6 +24,10 @@ pub struct CurrentLevel(pub LevelDef);
 pub struct Journey {
     pub duration: f32,
     pub elapsed: f32,
+    /// Until launch the countdown and the fault schedule wait. A flight
+    /// launches straight away unless level one's pre-flight check holds it
+    /// (see `coach`).
+    pub launched: bool,
 }
 
 impl Journey {
@@ -31,6 +35,7 @@ impl Journey {
         Self {
             duration,
             elapsed: 0.0,
+            launched: true,
         }
     }
 
@@ -108,7 +113,9 @@ fn start_run(
 }
 
 fn advance_journey(time: Res<Time>, mut journey: ResMut<Journey>) {
-    journey.elapsed += time.delta_secs();
+    if journey.launched {
+        journey.elapsed += time.delta_secs();
+    }
 }
 
 fn start_due_faults(
@@ -118,6 +125,9 @@ fn start_due_faults(
     active: Query<&Fault>,
     mut stats: ResMut<RunStats>,
 ) {
+    if !journey.launched {
+        return;
+    }
     let mut busy: Vec<Site> = active.iter().map(|f| f.site).collect();
     let mut i = 0;
     while i < plan.pending.len() {
@@ -217,5 +227,6 @@ mod tests {
         j.elapsed = 10.0;
         assert!(j.arrived());
         assert_eq!(j.remaining(), 0.0);
+        assert!(Journey::new(10.0).launched, "flights launch unless held");
     }
 }

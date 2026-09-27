@@ -38,6 +38,7 @@ pub fn level_one() -> LevelDef {
             FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 68.0),
             FaultSlot::pinned(186.0, Site::Helm, 74.0),
         ],
+        coaching: true,
     }
 }
 
@@ -88,6 +89,20 @@ mod tests {
         assert_eq!(phase(90.0, 170.0), 2, "tense");
         assert_eq!(phase(170.0, 270.0), 3, "scramble");
         assert_eq!(peak_overlap(&plan, r), level.envelope.max_overlap);
+    }
+
+    #[test]
+    fn every_kind_starts_once_while_settling_in() {
+        // Coaching tips each kind's first fault: they come one at a time.
+        let plan = level_one().roll(&mut GameRng::from_seed(0));
+        let firsts: Vec<FaultKind> = plan.iter().take(3).map(|f| f.site.kind()).collect();
+        for kind in FaultKind::ALL {
+            assert!(
+                firsts.contains(&kind),
+                "{kind:?} is not among the first three"
+            );
+        }
+        assert!(level_one().coaching);
     }
 
     #[test]
