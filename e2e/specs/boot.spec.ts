@@ -39,7 +39,7 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     await attachShot(
       page,
       testInfo,
-      "boot: tiled quarters, closed doors top and bottom centre, engineer holding the wrench, dark diagnostic screen top left, lockers top right, bunk bottom left, ARRIVAL IN 4:30 with the pre-flight check panel under it, belt [1] WRENCH [2] TAPE 20s",
+      "boot: tiled quarters, closed doors top and bottom, engineer holding the wrench, dark console top left, ARRIVAL IN 4:30 over the pre-flight check panel, belt [1] WRENCH [2] TAPE 20s",
     );
   }
 });

@@ -319,6 +319,7 @@ fn persist(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coach::{Tip, TipsSeen};
     use crate::level::{Damage, RunRecord};
 
     fn some_progress() -> Progress {
@@ -340,10 +341,14 @@ mod tests {
 
     #[test]
     fn settings_and_progress_round_trip() {
+        let mut tips_seen = TipsSeen::default();
+        tips_seen.mark(Tip::Preflight);
+        tips_seen.mark(Tip::HullBreach);
         let settings = Settings {
             shake: 25,
             flash: 0,
             controls_hint: false,
+            tips_seen,
             ..default()
         };
         assert_eq!(decode_settings(&encode_settings(&settings)), Ok(settings));
@@ -356,6 +361,8 @@ mod tests {
         let s = decode_settings("(version: 1, settings: (shake: 50))").unwrap();
         assert_eq!(s.shake, 50);
         assert_eq!(s.flash, Settings::default().flash);
+        // Saved before the coaching existed: every tip is still to come.
+        assert_eq!(s.tips_seen, TipsSeen::default());
         assert_eq!(
             decode_progress("(version: 1, progress: ())"),
             Ok(Progress::default())
