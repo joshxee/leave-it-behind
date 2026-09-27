@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { aimAt, attachShot, collectErrors, gameState, openGame, toScreen, waitForState } from './helpers';
+import { expect, type Page, test } from '@playwright/test';
+import { aimAt, attachShot, type BevyState, collectErrors, gameState, openGame, toScreen, waitForState } from './helpers';
 
 test('wrench: click each loose bolt to fix the engine', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
@@ -68,27 +68,18 @@ test('tape: hold the button on the breach to seal it', async ({ page }, testInfo
   }
 });
 
-test('helm: E locks in, WASD steers the marker into the centre band', async ({ page }, testInfo) => {
-  const errors = collectErrors(page);
+/**
+ * Closed-loop steering at the helm: holds the keys that point the marker back
+ * at the centre until `done(state)`, then lets go of them.
+ */
+async function steerToCentre(page: Page, done: (s: BevyState) => boolean | Promise<boolean>) {
+  const held = new Set<string>();
+  const deadline = Date.now() + 90_000;
   try {
-    await openGame(page, { scenario: 'drift' });
-    await waitForState(page, (s) => s.focus === 'Helm' && !s.nav.inBand);
-    await attachShot(page, testInfo, 'drift: cockpit, engineer at the pilot seat, nav display below with a ship cursor off-centre on a sweeping radar (amber near the centre square, red further out), display frame blinking red');
-    await page.keyboard.press('e');
-    await waitForState(page, (s) => s.nav.engaged && s.player.locked);
-
-    // Closed-loop steering: hold the keys that point back at the centre.
-    const held = new Set<string>();
-    const deadline = Date.now() + 90_000;
-    let shotTaken = false;
     for (;;) {
       const s = await gameState(page);
-      if (s.faults.length === 0) break;
-      if (Date.now() > deadline) throw new Error(`drift not fixed: ${JSON.stringify(s.nav)}`);
-      if (!shotTaken && s.nav.inBand && s.faults[0].repair > 0.3) {
-        shotTaken = true;
-        await attachShot(page, testInfo, 'steering: engineer seated facing the window, ship cursor pale cyan inside the lit centre square, hold bar growing along the display bottom');
-      }
+      if (await done(s)) return s;
+      if (Date.now() > deadline) throw new Error(`steering never finished: ${JSON.stringify(s.nav)}`);
       const want = new Set<string>();
       if (s.nav.x > 0.05) want.add('a');
       if (s.nav.x < -0.05) want.add('d');
@@ -98,13 +89,63 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
       for (const k of want) if (!held.has(k)) { await page.keyboard.down(k); held.add(k); }
       await page.waitForTimeout(100);
     }
+  } finally {
     for (const k of held) await page.keyboard.up(k);
+  }
+}
+
+test('helm: E locks in, WASD steers the marker into the centre band', async ({ page }, testInfo) => {
+  const errors = collectErrors(page);
+  try {
+    await openGame(page, { scenario: 'drift' });
+    await waitForState(page, (s) => s.focus === 'Helm' && !s.nav.inBand);
+    await attachShot(page, testInfo, 'drift: cockpit, engineer at the pilot seat, nav display below with a ship cursor off-centre on a sweeping radar (amber near the centre square, red further out), display frame blinking red');
+    await page.keyboard.press('e');
+    await waitForState(page, (s) => s.nav.engaged && s.player.locked);
+
+    let shotTaken = false;
+    await steerToCentre(page, async (s) => {
+      if (s.faults.length === 0) return true;
+      if (!shotTaken && s.nav.inBand && s.faults[0].repair > 0.3) {
+        shotTaken = true;
+        await attachShot(page, testInfo, 'steering: engineer seated facing the window, ship cursor pale cyan inside the lit centre square, hold bar growing along the display bottom');
+      }
+      return false;
+    });
     const done = await waitForState(page, (s) => !s.nav.engaged);
     expect(done.stats.fixed).toBe(1);
     expect(done.player.locked).toBe(false);
     expect(errors).toEqual([]);
   } finally {
     await attachShot(page, testInfo, 'drift-fixed: marker settling to the centre, display frame steel blue, engineer free to walk');
+  }
+});
+
+test('helm: leaving mid-hold drains the hold, even with the marker in the band', async ({ page }, testInfo) => {
+  const errors = collectErrors(page);
+  try {
+    await openGame(page, { scenario: 'drift' });
+    await waitForState(page, (s) => s.focus === 'Helm');
+    await page.keyboard.press('e');
+    await waitForState(page, (s) => s.nav.engaged && s.player.locked);
+    // Half a hold at the centre, then E: from there the drift needs over 2 s to leave the band.
+    await steerToCentre(page, (s) => s.faults.length === 0 || s.faults[0].repair > 0.5);
+    await page.keyboard.press('e');
+    const left = await waitForState(page, (s) => !s.nav.engaged && !s.player.locked);
+    expect(left.faults.length).toBe(1);
+    // Only steering from the helm counts.
+    await waitForState(
+      page,
+      (s, r) => s.nav.inBand && s.faults.length === 1 && s.faults[0].repair < r - 0.05,
+      left.faults[0].repair,
+    );
+    await attachShot(page, testInfo, 'helm-left: engineer standing at the pilot seat, ship cursor pale cyan inside the lit centre square, hold bar shrinking along the display bottom');
+    const drained = await waitForState(page, (s) => s.faults.length !== 1 || s.faults[0].repair === 0);
+    expect(drained.faults.length).toBe(1);
+    expect(drained.stats.fixed).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await attachShot(page, testInfo, 'helm-left-drained: engineer standing at the pilot seat, no hold bar on the nav display, the drift still active');
   }
 });
 

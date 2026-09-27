@@ -6,7 +6,7 @@ What breaks, where, and how long until it is fatal. A fault is an entity with a 
 |---|---|---|---|
 | `LooseBolts` (`bolts.rs`) | 4 engine panels × 3 bolts (the long faces of the engine blocks) | stand, click each loose bolt with the snapped wrench (0.9 s turn each) | engine overheats |
 | `HullBreach` (`breach.rs`) | 6 airlock + 3 main hull wall points (airlock weight 3, hull 1) | stand and hold tape on the hole for `SEAL_SECS` (3 s) | oxygen runs out |
-| `TrajectoryDrift` (`drift.rs`) | the nav helm | E at the pilot seat locks in; WASD nudges the drifting marker into the centre band and holds it `HOLD_SECS` (3 s; progress drains outside) | asteroid collision |
+| `TrajectoryDrift` (`drift.rs`) | the nav helm | E at the pilot seat locks in; WASD nudges the drifting marker into the centre band and holds it `HOLD_SECS` (3 s). Progress builds only at the helm and drains otherwise, so a marker that wanders into the band by itself fixes nothing | asteroid collision |
 
 - **Sites (`sites.rs`):** positions come from the ship map: breach points are the marks `'1'..'9'` on hull walls, bolt panels the long faces of the engine blocks `'P'` / `'S'` (inner faces look toward the spine), the helm the cockpit's pilot seat. Names are ship-relative (port/starboard, fore/aft) so they hold whichever way the ship points; `label()` (the diagnostic list) is worked out from the layout ("left wall, bottom", "left engine, spine side", "hatch seal, left").
 - **Types:** `FaultKind` (names, failure text, default clock range within `CLOCK_LIMITS` 55–90 s), `Site` (kind, room, position, normal, wall cell, weight, bolt positions), `Fault`, `FaultFixed`, `FaultFailed`, `Bolt`, `Nav` (marker, drift heading, helm engaged).

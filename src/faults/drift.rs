@@ -1,8 +1,10 @@
 //! Trajectory drift, fixed at the nav helm. E by the joystick locks the
 //! engineer in place; WASD then nudges the course marker on the nav display.
 //! While a drift is active the marker wanders off on its own; holding it in
-//! the centre band for [`HOLD_SECS`] fixes the course (progress drains
-//! while it is outside). E again leaves the helm; a fix leaves it too.
+//! the centre band from the helm for [`HOLD_SECS`] fixes the course.
+//! Progress drains while the marker is outside or nobody is at the helm, so
+//! a marker that wanders back into the band by itself fixes nothing. E again
+//! leaves the helm; a fix leaves it too.
 //!
 //! Marker coordinates are normalized: the display spans −1..1 on each axis.
 
@@ -22,7 +24,7 @@ use crate::{AppState, GameRng, GameSet, RunSet, not_paused, palette, running};
 pub const BAND_HALF: f32 = 0.4;
 /// Seconds in the band to fix the course.
 pub const HOLD_SECS: f32 = 3.0;
-/// Hold progress lost per second outside the band.
+/// Hold progress lost per second outside the band or away from the helm.
 pub const HOLD_DECAY: f32 = 0.15;
 /// Marker drift speed while the fault is active (display half-widths per second).
 pub const DRIFT_SPEED: f32 = 0.15;
@@ -77,12 +79,12 @@ pub fn step_marker(marker: Vec2, heading: Option<f32>, input: Vec2, dt: f32) -> 
     (marker + own + push).clamp(Vec2::NEG_ONE, Vec2::ONE)
 }
 
-/// Hold progress after one tick in or out of the band. A completed hold
-/// stays complete.
-pub fn step_hold(hold: f32, inside: bool, dt: f32) -> f32 {
+/// Hold progress after one tick, `holding` the marker in the band from the
+/// helm or not. A completed hold stays complete.
+pub fn step_hold(hold: f32, holding: bool, dt: f32) -> f32 {
     if hold >= 1.0 {
         1.0
-    } else if inside {
+    } else if holding {
         (hold + dt / HOLD_SECS).min(1.0)
     } else {
         (hold - HOLD_DECAY * dt).max(0.0)
@@ -237,7 +239,9 @@ fn steer(
     nav.marker = step_marker(nav.marker, heading, nav.stick, dt);
     if let Some(mut fault) = drift {
         nav.heading += nav.turn * dt;
-        fault.repair = step_hold(fault.repair, in_band(nav.marker), dt);
+        // The drift can carry the marker through the band: only the helm holds it.
+        let holding = nav.engaged && in_band(nav.marker);
+        fault.repair = step_hold(fault.repair, holding, dt);
         if fault.is_repaired() && nav.engaged {
             // Course locked in: the engineer is free to go.
             nav.engaged = false;
@@ -328,7 +332,12 @@ fn draw_nav(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use bevy::ecs::system::RunSystemOnce;
+
     use super::*;
+    use crate::faults::Site;
 
     const DT: f32 = 1.0 / 60.0;
 
@@ -372,5 +381,33 @@ mod tests {
     fn band_is_the_centre_square() {
         assert!(in_band(Vec2::new(BAND_HALF, -BAND_HALF)));
         assert!(!in_band(Vec2::new(BAND_HALF + 0.01, 0.0)));
+    }
+
+    /// Repair after the drift carries the marker across the band for longer
+    /// than a hold, with or without the engineer at the helm.
+    fn drift_across_the_band(engaged: bool) -> f32 {
+        let mut world = World::new();
+        world.init_resource::<Time>();
+        world.init_resource::<PlayerIntent>();
+        world.insert_resource(Nav {
+            marker: Vec2::new(-BAND_HALF, 0.0),
+            engaged,
+            ..default()
+        });
+        let fault = world.spawn(Fault::new(Site::Helm, 60.0)).id();
+        for _ in 0..((HOLD_SECS + 0.5) / DT).round() as usize {
+            world
+                .resource_mut::<Time>()
+                .advance_by(Duration::from_secs_f32(DT));
+            world.run_system_once(steer).unwrap();
+            assert!(in_band(world.resource::<Nav>().marker));
+        }
+        world.get::<Fault>(fault).unwrap().repair
+    }
+
+    #[test]
+    fn only_the_helm_holds_the_course() {
+        assert_eq!(drift_across_the_band(false), 0.0, "nobody at the helm");
+        assert_eq!(drift_across_the_band(true), 1.0, "engineer at the helm");
     }
 }
