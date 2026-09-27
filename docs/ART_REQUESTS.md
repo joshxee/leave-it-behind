@@ -18,6 +18,7 @@ The latest character hold/use/walk animations, ship map, collision cores, door b
 | Thing | Location | Notes |
 |---|---|---|
 | Bunk | quarters, `b`, 2 × 1 cells | Still a simple bed and pillow shape. |
+| Gun room fittings | gun room (`G`) | No gun or ammo art yet: furnished with control consoles and crates. A turret breech or ammo racks would sell the room. |
 | Snap ring | wrench target | Could remain a UI shape. |
 | Seated engineer | pilot chair | Currently uses the empty-handed idle pose. |
 | Tape roll in the character pack | held tool | A chunkier roll could improve readability further; maintenance includes a standalone roll study. |

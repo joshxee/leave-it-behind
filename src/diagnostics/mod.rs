@@ -119,6 +119,20 @@ fn map_frame() -> (Rect, f32) {
     (hull, scale)
 }
 
+/// A room's name on the minimap: short enough for its box. The thin
+/// corridors are left blank.
+fn map_label(room: RoomId) -> &'static str {
+    match room {
+        RoomId::Cockpit => "COCKPIT",
+        RoomId::Quarters => "QUARTERS",
+        RoomId::GunRoom => "GUNS",
+        RoomId::Hull => "HULL",
+        RoomId::PortEngine | RoomId::StarboardEngine => "ENGINE",
+        RoomId::Airlock => "AIRLOCK",
+        RoomId::ForeCorridor | RoomId::AftCorridor => "",
+    }
+}
+
 /// World position to minimap pixels (origin top left).
 pub fn to_map(p: Vec2) -> Vec2 {
     let (hull, scale) = map_frame();
@@ -324,7 +338,7 @@ fn spawn_overlay(mut commands: Commands) {
             },
             BackgroundColor(palette::MAP_ROOM),
             ChildOf(map),
-            children![text(room.as_str().to_uppercase(), 11.0, palette::UI_DIM)],
+            children![text(map_label(room), 11.0, palette::UI_DIM)],
         ));
     }
     commands.spawn((
@@ -492,7 +506,7 @@ mod tests {
         assert_eq!(r[0].kind, FaultKind::HullBreach, "15s left beats 40s left");
         assert_eq!(r[0].points, vec![Site::AirlockPortAft.pos()]);
         assert_eq!(r[1].points, vec![panel[0]]);
-        assert_eq!(r[1].room, RoomId::Engine);
+        assert_eq!(r[1].room, RoomId::PortEngine);
         assert_eq!(
             reading_line(&r[0]),
             format!(

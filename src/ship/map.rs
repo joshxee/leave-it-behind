@@ -16,8 +16,10 @@
 //! '.'  floor                     '|' '-'  floor with a conduit (vertical, horizontal)
 //! '='  door, slides open as the engineer comes near
 //! 'X'  locked door (the airlock's outer hatch)
-//! 'C' 'Q' 'E' 'H' 'A'  floor that names its room: cockpit, engineer's
-//!      quarters, engine room, main hull, airlock (exactly one each)
+//! 'C' 'Q' 'F' 'G' 'H' 'E' 'T' 'R' 'A'  floor that names its room: cockpit,
+//!      engineer's quarters, fore corridor, gun room, main hull, port engine
+//!      room, aft corridor, starboard engine room, airlock (exactly one
+//!      each; on a conduit, between two conduit cells, it carries the conduit)
 //! 'V'  cockpit module, window row (part of the hull wall; the art faces up)
 //! 'v'  cockpit module, console row (the middle cell is the pilot seat)
 //! 'N'  nav display (on the floor)    'd'  diagnostic console (faces down)
@@ -41,8 +43,11 @@ use bevy::prelude::*;
 use crate::art::TILE;
 use crate::art::tiles::{Tile, local_point, local_rect};
 
-/// The ship, pointing up: cockpit at the top, airlock at the bottom. The
-/// spine (the conduit through every door) runs from front to tail.
+/// The ship, pointing up: cockpit at the top, then a thin corridor between
+/// the quarters (port) and the gun room (starboard), the main hull, a second
+/// thin corridor between the two engine rooms, and the airlock at the bottom.
+/// The spine (the conduit through every door on the centre line) runs from
+/// front to tail.
 pub const SHIP: &str = r"
    #####VVV#####
    #Ck..vvv..k.#
@@ -52,24 +57,15 @@ pub const SHIP: &str = r"
    #....NNN....#
    #.....|.....#
    #o....|....o#
-  #######=#######
-  #Q..d..|....ll#
-  #......|......#
-  #.....@|......#
-  #......|......#
-  #......|......#
-  #......|......#
-  #......|......#
-  #bb....|....pp#
 #########=#########
-#E.......|......pp#
-#...PP...|...SS...#
-#...PP...|...SS...#
-#...PP...|...SS...#
-#...PP...|...SS...#
-u...PP...|...SS...w
-#...PP...|...SS...#
-#........|........#
+#Q..d.ll#|#G...kkk#
+#.......#F#.......#
+#.......#|#.......#
+#....@..=|=.......#
+#.......#|#.......#
+#.......#|#.....cc#
+#.......#|#.....cc#
+#bb.....#|#o......#
 #########=#########
 #H.......|........#
 9...cc...|........#
@@ -79,6 +75,15 @@ u...PP...|...SS...w
 #........|..ccc...#
 7........|..cc....#
 #o.......|.......o#
+#########=#########
+#E......#|#R......#
+#..PP...#T#...SS..#
+#..PP...#|#...SS..#
+#..PP...=|=...SS..#
+#..PP...#|#...SS..#
+u..PP...#|#...SS..w
+#..PP...#|#...SS..#
+#.....pp#|#pp.....#
 #########=#########
    #A....|.....#
    4.....|.....6
@@ -107,18 +112,26 @@ pub const WALL_HALF: f32 = 12.0;
 pub enum RoomId {
     Cockpit,
     Quarters,
-    Engine,
+    ForeCorridor,
+    GunRoom,
     Hull,
+    PortEngine,
+    AftCorridor,
+    StarboardEngine,
     Airlock,
 }
 
 impl RoomId {
-    /// Front to tail.
-    pub const ALL: [RoomId; 5] = [
+    /// Front to tail, port to starboard across the ship.
+    pub const ALL: [RoomId; 9] = [
         RoomId::Cockpit,
         RoomId::Quarters,
-        RoomId::Engine,
+        RoomId::ForeCorridor,
+        RoomId::GunRoom,
         RoomId::Hull,
+        RoomId::PortEngine,
+        RoomId::AftCorridor,
+        RoomId::StarboardEngine,
         RoomId::Airlock,
     ];
 
@@ -132,8 +145,12 @@ impl RoomId {
         match self {
             RoomId::Cockpit => "Cockpit",
             RoomId::Quarters => "Quarters",
-            RoomId::Engine => "Engine",
+            RoomId::ForeCorridor => "ForeCorridor",
+            RoomId::GunRoom => "GunRoom",
             RoomId::Hull => "Hull",
+            RoomId::PortEngine => "PortEngine",
+            RoomId::AftCorridor => "AftCorridor",
+            RoomId::StarboardEngine => "StarboardEngine",
             RoomId::Airlock => "Airlock",
         }
     }
@@ -143,8 +160,12 @@ impl RoomId {
         match self {
             RoomId::Cockpit => "Cockpit",
             RoomId::Quarters => "Engineer's quarters",
-            RoomId::Engine => "Engine room",
+            RoomId::ForeCorridor => "Fore corridor",
+            RoomId::GunRoom => "Gun room",
             RoomId::Hull => "Main hull",
+            RoomId::PortEngine => "Port engine room",
+            RoomId::AftCorridor => "Aft corridor",
+            RoomId::StarboardEngine => "Starboard engine room",
             RoomId::Airlock => "Airlock",
         }
     }
@@ -154,8 +175,12 @@ impl RoomId {
         match self {
             RoomId::Cockpit => 'C',
             RoomId::Quarters => 'Q',
-            RoomId::Engine => 'E',
+            RoomId::ForeCorridor => 'F',
+            RoomId::GunRoom => 'G',
             RoomId::Hull => 'H',
+            RoomId::PortEngine => 'E',
+            RoomId::AftCorridor => 'T',
+            RoomId::StarboardEngine => 'R',
             RoomId::Airlock => 'A',
         }
     }
@@ -249,7 +274,7 @@ pub struct ShipMap {
     size: IVec2,
     cells: Vec<char>,
     rooms: Vec<Option<RoomId>>,
-    interiors: [Option<Rect>; 5],
+    interiors: [Option<Rect>; RoomId::ALL.len()],
     /// Per cell, which quadrant corners (`[nw, ne, sw, se]`) are outside the hull.
     outside: Vec<[bool; 4]>,
     walls: Vec<Rect>,
@@ -294,7 +319,7 @@ impl ShipMap {
             size: IVec2::new(width, height),
             cells,
             rooms: vec![None; n],
-            interiors: [None; 5],
+            interiors: [None; RoomId::ALL.len()],
             outside: vec![[false; 4]; n],
             walls: Vec::new(),
             props: Vec::new(),
@@ -668,7 +693,11 @@ impl ShipMap {
         match (self.get(cell), self.room_of(cell)) {
             ('|', _) => Tile::FloorConduitV,
             ('-', _) => Tile::FloorConduitH,
-            (_, Some(RoomId::Engine)) => match h {
+            // A room marker on the conduit (a corridor's) carries it on.
+            (c, _) if RoomId::from_marker(c).is_some() && self.conduit_through(cell).is_some() => {
+                self.conduit_through(cell).expect("checked")
+            }
+            (_, Some(RoomId::PortEngine | RoomId::StarboardEngine)) => match h {
                 0 | 1 => Tile::FloorGrate,
                 2 => Tile::FloorPanelB,
                 _ => Tile::FloorPanelA,
@@ -689,6 +718,18 @@ impl ShipMap {
                 6 | 7 => Tile::FloorPanelB,
                 _ => Tile::FloorPanelC,
             },
+        }
+    }
+
+    /// The conduit tile for a cell between two conduit cells in a line.
+    fn conduit_through(&self, cell: IVec2) -> Option<Tile> {
+        let (x, y) = (IVec2::X, IVec2::Y);
+        if self.get(cell - y) == '|' && self.get(cell + y) == '|' {
+            Some(Tile::FloorConduitV)
+        } else if self.get(cell - x) == '-' && self.get(cell + x) == '-' {
+            Some(Tile::FloorConduitH)
+        } else {
+            None
         }
     }
 
@@ -886,7 +927,7 @@ mod tests {
     fn the_ship_parses_and_has_everything_the_game_uses() {
         let map = ShipMap::parse(SHIP).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(map.rooms().count(), RoomId::ALL.len());
-        assert_eq!(map.doors().len(), 5);
+        assert_eq!(map.doors().len(), 9);
         assert_eq!(map.doors().iter().filter(|d| d.locked).count(), 1);
         for ch in ['@', 'd', 'V', 'v', 'N', 'P', 'S', 'b'] {
             assert!(map.cells_of(ch).next().is_some(), "no {ch:?}");
@@ -950,9 +991,36 @@ mod tests {
 
     #[test]
     fn the_cockpit_is_at_the_front_and_the_airlock_at_the_tail() {
-        // Pointing up: front to tail runs from the top of the map down.
+        // Pointing up: front to tail runs from the top of the map down, and
+        // rooms side by side (port, corridor, starboard) share a level.
         let ys: Vec<f32> = RoomId::ALL.iter().map(|r| r.center().y).collect();
-        assert!(ys.windows(2).all(|w| w[0] > w[1]), "{ys:?}");
+        assert!(ys.windows(2).all(|w| w[0] >= w[1]), "{ys:?}");
+        let fore = [RoomId::Quarters, RoomId::ForeCorridor, RoomId::GunRoom];
+        let aft = [
+            RoomId::PortEngine,
+            RoomId::AftCorridor,
+            RoomId::StarboardEngine,
+        ];
+        for level in [fore, aft] {
+            let xs: Vec<f32> = level.iter().map(|r| r.center().x).collect();
+            assert!(xs.windows(2).all(|w| w[0] < w[1]), "{level:?}: {xs:?}");
+            assert!(level.iter().all(|r| r.center().y == level[0].center().y));
+        }
+        assert!(RoomId::Cockpit.center().y > RoomId::Quarters.center().y);
+        assert!(RoomId::Quarters.center().y > RoomId::Hull.center().y);
+        assert!(RoomId::Hull.center().y > RoomId::PortEngine.center().y);
+        assert!(RoomId::PortEngine.center().y > RoomId::Airlock.center().y);
+    }
+
+    #[test]
+    fn the_corridors_are_thin_and_carry_the_conduit() {
+        let map = ship();
+        for corridor in [RoomId::ForeCorridor, RoomId::AftCorridor] {
+            let width = corridor.interior().width();
+            assert!(width < 2.0 * TILE, "{corridor:?} is {width} wide");
+            let marker = map.cells_of(corridor.marker()).next().unwrap();
+            assert_eq!(map.floor_tile(marker), Tile::FloorConduitV);
+        }
     }
 
     #[test]

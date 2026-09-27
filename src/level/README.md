@@ -15,7 +15,7 @@ The flight: countdown to arrival, the level's fault schedule, the damage faults 
   | 4 | 4:00 | 11 | 3 (once) | 55–68 s |
   | 5 | 4:30 | 14 | 3 (twice) | 55–65 s |
 
-- **Level one (`one.rs`):** 2:30, teaches the three fixes. Pinned: loose bolts at 0:10 (port engine, spine side), a breach at 0:34 in the same engine room, drift at 0:58; then one more fault of a random kind and site at 1:24–1:30, so one fix is done twice. Never two at once. Unseeded, so the last fault (and the drift heading) differ from run to run. Every fault in every level can fail before landing (unit-tested).
+- **Level one (`one.rs`):** 2:30, teaches the three fixes. Pinned: loose bolts at 0:10 (port engine, spine side), a breach at 0:34 in the same (port) engine room, drift at 0:58; then one more fault of a random kind and site at 1:24–1:30, so one fix is done twice. Never two at once. Unseeded, so the last fault (and the drift heading) differ from run to run. Every fault in every level can fail before landing (unit-tested).
 - **Launch:** the countdown and the fault schedule wait while `Journey::launched` is false. Every flight launches at once, except level one's first, which the pre-flight check holds (`coach`).
 - **Resources:** `CurrentLevel` (`number`, `next`), `Journey { duration, elapsed, launched }`, `FaultPlan { pending }`, `RunStats { started, fixed, failure, damage }`, `Progress`, `LastRun`.
 - **Systems:** `start_run` (`OnEnter(Playing)`: reseed, roll, reset), `advance_journey` → `start_due_faults` → `track_damage` (FixedUpdate/Simulate), `count_fixes` → `decide_outcome` (FixedUpdate/Resolve, after `resolve_faults`), `record_run` (`OnEnter(Landed)`, `OnEnter(Lost)`).

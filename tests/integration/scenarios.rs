@@ -40,7 +40,7 @@ fn bolts_puts_a_snapped_wrench_on_a_loose_panel() {
     assert_eq!(bolts.iter(app.world()).filter(|b| b.loose).count(), 3);
     assert_eq!(app.world().resource::<ToolBelt>().held, Tool::Wrench);
     assert!(app.world().resource::<ToolState>().snap.is_some());
-    assert_eq!(app.world().resource::<CurrentRoom>().0, RoomId::Engine);
+    assert_eq!(app.world().resource::<CurrentRoom>().0, RoomId::PortEngine);
 }
 
 #[test]

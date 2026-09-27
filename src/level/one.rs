@@ -17,7 +17,7 @@ use crate::faults::{FaultKind, Site};
 /// Where level one's first loose bolts and first breach are (the coaching
 /// points at them).
 pub const FIRST_BOLTS: Site = Site::PortEngineInner;
-pub const FIRST_BREACH: Site = Site::EngineRoomStarboard;
+pub const FIRST_BREACH: Site = Site::EngineRoomPort;
 
 pub fn level_one() -> LevelDef {
     LevelDef {

@@ -11,23 +11,24 @@ use crate::common::{
     test_app_with,
 };
 
-/// The door between the quarters and the cockpit, and the way through it
-/// from the quarters.
-fn quarters_door() -> (Vec2, Vec2) {
+/// The door between the main hull and the fore corridor, and the way
+/// through it from the hull. No other door is within reach of it on the
+/// hull side.
+fn corridor_door() -> (Vec2, Vec2) {
     for d in ship().doors().iter().filter(|d| !d.locked) {
         let across = if d.across_x { Vec2::Y } else { Vec2::X };
         let pair = (
             RoomId::at(d.center - across * 40.0),
             RoomId::at(d.center + across * 40.0),
         );
-        if pair == (RoomId::Quarters, RoomId::Cockpit) {
+        if pair == (RoomId::Hull, RoomId::ForeCorridor) {
             return (d.center, across);
         }
-        if pair == (RoomId::Cockpit, RoomId::Quarters) {
+        if pair == (RoomId::ForeCorridor, RoomId::Hull) {
             return (d.center, -across);
         }
     }
-    panic!("no door from the quarters to the cockpit");
+    panic!("no door from the main hull to the fore corridor");
 }
 
 fn door_at(app: &mut App, center: Vec2) -> Door {
@@ -40,7 +41,7 @@ fn door_at(app: &mut App, center: Vec2) -> Door {
 #[test]
 fn a_door_opens_as_the_engineer_comes_and_closes_behind_them() {
     let mut app = test_app_with(Scenario::Quiet);
-    let (door, way) = quarters_door();
+    let (door, way) = corridor_door();
     put_player(&mut app, door - way * (DOOR_REACH + 60.0));
     run_frames(&mut app, 2);
     assert_eq!(
@@ -62,7 +63,10 @@ fn a_door_opens_as_the_engineer_comes_and_closes_behind_them() {
         (player_pos(app) - door).dot(way) > DOOR_REACH + 10.0
     });
     release(&mut app, key_toward(way));
-    assert_eq!(app.world().resource::<CurrentRoom>().0, RoomId::Cockpit);
+    assert_eq!(
+        app.world().resource::<CurrentRoom>().0,
+        RoomId::ForeCorridor
+    );
     run_frames(&mut app, secs(0.5));
     assert_eq!(door_at(&mut app, door).frame, 0, "closed behind them");
 }
@@ -70,7 +74,7 @@ fn a_door_opens_as_the_engineer_comes_and_closes_behind_them() {
 #[test]
 fn a_door_emits_one_opening_cue_and_one_clang_cue() {
     let mut app = test_app_with(Scenario::Quiet);
-    let (door, way) = quarters_door();
+    let (door, way) = corridor_door();
     let mut cursor = MessageCursor::<DoorCue>::default();
     // Skip cues from the first flight frame near the player's spawn.
     cursor
@@ -111,7 +115,7 @@ fn a_door_emits_one_opening_cue_and_one_clang_cue() {
 #[test]
 fn a_closed_door_blocks_until_it_has_opened() {
     let mut app = test_app_with(Scenario::Quiet);
-    let (door, way) = quarters_door();
+    let (door, way) = corridor_door();
     // Right in front of the closed door, walking straight into it.
     put_player(&mut app, door - way * (WALL_HALF + PLAYER_RADIUS + 2.0));
     press(&mut app, key_toward(way));
@@ -122,7 +126,7 @@ fn a_closed_door_blocks_until_it_has_opened() {
         "went through a closed door"
     );
     run_until(&mut app, secs(1.5), |app| {
-        app.world().resource::<CurrentRoom>().0 == RoomId::Cockpit
+        app.world().resource::<CurrentRoom>().0 == RoomId::ForeCorridor
     });
     assert_eq!(door_at(&mut app, door).frame, OPEN_FRAME);
 }
@@ -130,14 +134,14 @@ fn a_closed_door_blocks_until_it_has_opened() {
 #[test]
 fn the_engineer_is_steered_into_the_doorway() {
     let mut app = test_app_with(Scenario::Quiet);
-    let (door, way) = quarters_door();
+    let (door, way) = corridor_door();
     // 30 units to one side of the door's centre line: without help the
     // door frame would stop them (the gap is 36 units, they are 28 wide).
     put_player(&mut app, door - way * 120.0 + way.perp() * 30.0);
     frame(&mut app);
     press(&mut app, key_toward(way));
     run_until(&mut app, secs(1.5), |app| {
-        app.world().resource::<CurrentRoom>().0 == RoomId::Cockpit
+        app.world().resource::<CurrentRoom>().0 == RoomId::ForeCorridor
     });
 }
 
