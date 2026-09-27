@@ -12,12 +12,13 @@ Level one's first flight walks a new player through the game. It never pauses an
   | Trajectory drift | Take your seat at the cockpit and realign the ship back on course. |
 
   The tips appear with the fault, wherever the engineer is. In level one the first three faults are one of each kind, one at a time (0:10, 0:34, 0:58).
+- **Blue pings:** during that first coaching, a blue ring points to the diagnostic screen, the first loose bolt (Port Engine Inner), the first breach (the engine room's starboard wall), and the cockpit chair as each target becomes relevant. A ping is saved as seen and hides when the player interacts with its target. The TIPS setting resets ping state together with tip state.
 - **Once only:** each tip shows once, ever: `TipsSeen` is saved with the settings (`Settings::tips_seen`). A fault tip counts as seen when its fault is fixed or when the flight ends with it on screen (landed, lost, restarted, abandoned); the pre-flight check when it is done. A second flight skips whatever the first showed.
 - **The TIPS setting:** reads ON while any tip is still to come (`Settings::tips_on`), so it turns OFF by itself once the coaching is over. Switching it on brings every tip back: tips for faults on board show at once, the pre-flight check at the next flight. Switching it off counts them all as seen and launches a waiting flight. RESET SETTINGS turns it back on.
 - **Where:** a panel under the countdown (`GlobalZIndex(25)`: above the HUD and the diagnostic screen, below menus and notices), during a flight only.
 - **Which flights:** levels with `LevelDef::coaching` (level one). Scenarios skip the coaching, as they skip the title, except those made for it (`Scenario::coached`).
-- **Types:** `Tip` (`ALL`, `for_fault`, `text`), `TipsSeen` (`has`, `mark`, `all`, `EVERY`), `Coach { active, launch_note }` (resource), `CoachPanel`, `CoachText`.
+- **Types:** `Tip` (`ALL`, `for_fault`, `text`), `TipsSeen` (`has`, `mark`, `all`, `EVERY`), `PingsSeen`, `Coach { active, launch_note }` (resource), `CoachPanel`, `CoachText`, `CoachPing`.
 - **Functions:** `lines` (what the panel says).
-- **Systems:** `spawn_panel` (Startup), `start_coaching` (`OnEnter(Playing)`, after the scenario), `preflight_check` → `tick_launch_note` and `note_fixes` (FixedUpdate/Resolve), `finish_coaching` (`OnExit(Playing)`), `draw_panel` (Update/Present).
+- **Systems:** `spawn_panel`, `spawn_pings` (Startup), `start_coaching` (`OnEnter(Playing)`, after the scenario), `preflight_check` → `tick_launch_note`, `note_fixes`, `note_ping_interactions` (FixedUpdate/Resolve), `finish_coaching` (`OnExit(Playing)`), `draw_panel`, `draw_pings` (Update/Present).
 - **Tests:** unit tests in `mod.rs` (and the TIPS toggle in `settings`); integration tests in `tests/integration/coach.rs`; e2e in `e2e/specs/coach.spec.ts`.
 - **Scenarios:** `first_flight` (the pre-flight check), `first_bolts` (a first fault with its tip up).

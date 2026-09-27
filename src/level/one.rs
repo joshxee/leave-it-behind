@@ -10,6 +10,11 @@
 use super::def::{Envelope, FaultSlot, LevelDef, TimeWindow};
 use crate::faults::{FaultKind, Site};
 
+/// Where level one's first loose bolts and first breach are (the coaching
+/// points at them).
+pub const FIRST_BOLTS: Site = Site::PortEngineInner;
+pub const FIRST_BREACH: Site = Site::EngineRoomStarboard;
+
 pub fn level_one() -> LevelDef {
     LevelDef {
         id: "one".into(),
@@ -22,8 +27,8 @@ pub fn level_one() -> LevelDef {
             response_secs: 20.0,
         },
         slots: vec![
-            FaultSlot::pinned(10.0, Site::PortEngineInner, 70.0),
-            FaultSlot::pinned(34.0, Site::EngineRoomStarboard, 70.0),
+            FaultSlot::pinned(10.0, FIRST_BOLTS, 70.0),
+            FaultSlot::pinned(34.0, FIRST_BREACH, 70.0),
             FaultSlot::pinned(58.0, Site::Helm, 80.0),
             FaultSlot::any(
                 TimeWindow::new(84.0, 90.0),
