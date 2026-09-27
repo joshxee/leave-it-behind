@@ -12,7 +12,7 @@ use crate::shapes::Shapes;
 use crate::ship::layout::ship;
 use crate::ship::{WallCell, show_tile};
 use crate::tools::TapeLaid;
-use crate::{AppState, GameSet, palette};
+use crate::{GameSet, not_paused, palette, running};
 
 /// Seconds of tape on the hole to seal it.
 pub const SEAL_SECS: f32 = 3.0;
@@ -32,16 +32,19 @@ impl Plugin for BreachPlugin {
             (open_breaches, seal_breaches)
                 .chain()
                 .in_set(GameSet::Simulate)
-                .run_if(in_state(AppState::Playing)),
+                .run_if(running),
         )
         .add_systems(
             FixedUpdate,
             patch_sealed
                 .after(super::resolve_faults)
                 .in_set(GameSet::Resolve)
-                .run_if(in_state(AppState::Playing)),
+                .run_if(running),
         )
-        .add_systems(Update, draw_breaches.in_set(GameSet::Present));
+        .add_systems(
+            Update,
+            draw_breaches.in_set(GameSet::Present).run_if(not_paused),
+        );
     }
 }
 

@@ -9,7 +9,7 @@ use super::{Fault, FaultKind, Site};
 use crate::shapes::{Shapes, at};
 use crate::ship::{BaseColor, EngineBlock};
 use crate::tools::{WrenchTarget, WrenchTightened};
-use crate::{AppState, GameSet, RunSet, palette};
+use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
 
 pub const BOLTS_PER_PANEL: usize = 3;
 
@@ -35,9 +35,14 @@ impl Plugin for BoltsPlugin {
                 (loosen_bolts, tighten_bolts)
                     .chain()
                     .in_set(GameSet::Simulate)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
-            .add_systems(Update, (draw_bolts, heat_engines).in_set(GameSet::Present));
+            .add_systems(
+                Update,
+                (draw_bolts, heat_engines)
+                    .in_set(GameSet::Present)
+                    .run_if(not_paused),
+            );
     }
 }
 

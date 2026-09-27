@@ -2,7 +2,8 @@
 //! `scripts/build-web.sh` fails a non-e2e build that contains any of this.
 //!
 //! - `window.__bevyReady = true` (and console `BEVY_READY`) after the first
-//!   rendered frame in `AppState::Playing`.
+//!   rendered frame of the first screen: the title (plain URL) or a flight
+//!   (`?scenario=`).
 //! - `window.__bevyState`: JSON-compatible snapshot, refreshed every
 //!   [`SNAPSHOT_EVERY`] frames (every frame while frozen). Its shape is the
 //!   `BevyState` type in `e2e/specs/helpers.ts`.
@@ -18,19 +19,21 @@ use bevy::prelude::*;
 use bevy::time::TimeSystems;
 use wasm_bindgen::prelude::*;
 
-use crate::AppState;
 use crate::alarm::Alarm;
 use crate::determinism::FixedTick;
 use crate::diagnostics::Diagnostics;
 use crate::faults::Fault;
 use crate::faults::bolts::Bolt;
 use crate::faults::drift::{Nav, in_band};
-use crate::level::{Journey, RunStats};
+use crate::level::{CurrentLevel, Damage, Journey, LastRun, Progress, RunRecord, RunStats};
+use crate::menu::{Menu, MenuCtx, MenuRow, content};
 use crate::player::sprite::EngineerSprite;
 use crate::player::{Facing, Focus, InteractKind, Locked, Movement, Player};
 use crate::ship::doors::Door;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
+use crate::ui::Notices;
+use crate::{AppState, Pause};
 
 const SNAPSHOT_EVERY: u32 = 2;
 
@@ -42,7 +45,7 @@ thread_local! {
 struct Bridge {
     frozen_requested: bool,
     ready: bool,
-    playing_frames: u32,
+    shown_frames: u32,
 }
 
 pub struct E2eBridgePlugin;
@@ -99,13 +102,13 @@ fn mark_ready(
     state: Res<State<AppState>>,
     mut virt: ResMut<Time<Virtual>>,
 ) {
-    if bridge.ready || *state.get() != AppState::Playing {
+    if bridge.ready || *state.get() == AppState::Boot {
         return;
     }
-    bridge.playing_frames += 1;
+    bridge.shown_frames += 1;
     // The frame counted here has been extracted and rendered once Last ran
-    // twice in Playing.
-    if bridge.playing_frames >= 2 {
+    // twice past Boot.
+    if bridge.shown_frames >= 2 {
         bridge.ready = true;
         if bridge.frozen_requested {
             virt.pause();
@@ -119,6 +122,22 @@ fn mark_ready(
 #[derive(SystemParam)]
 struct Snapshot<'w, 's> {
     state: Res<'w, State<AppState>>,
+    pause: Option<Res<'w, State<Pause>>>,
+    menu: Res<'w, Menu>,
+    menu_ctx: MenuCtx<'w>,
+    level: Res<'w, CurrentLevel>,
+    progress: Res<'w, Progress>,
+    last_run: Res<'w, LastRun>,
+    notices: Res<'w, Notices>,
+    rows: Query<
+        'w,
+        's,
+        (
+            &'static MenuRow,
+            &'static ComputedNode,
+            &'static UiGlobalTransform,
+        ),
+    >,
     tick: Res<'w, FixedTick>,
     virt: Res<'w, Time<Virtual>>,
     room: Res<'w, CurrentRoom>,
@@ -158,6 +177,96 @@ fn publish_state(bridge: Res<Bridge>, mut frame: Local<u32>, s: Snapshot) {
     if let Ok(value) = js_sys::JSON::parse(&json) {
         set_global("__bevyState", &value);
     }
+}
+
+fn damage_json(d: &Damage) -> String {
+    format!(
+        r#"{{"oxygen":{:.3},"course":{:.3},"engine":{:.3},"total":{:.3}}}"#,
+        d.oxygen,
+        d.course,
+        d.engine,
+        d.total()
+    )
+}
+
+fn record_json(r: Option<&RunRecord>) -> String {
+    r.map_or("null".to_string(), |r| {
+        format!(
+            r#"{{"landed":{},"survived":{:.3},"damage":{}}}"#,
+            r.landed,
+            r.survived,
+            damage_json(&r.damage)
+        )
+    })
+}
+
+/// JSON string literal (menu text is ASCII without quotes or backslashes,
+/// but escape them anyway).
+fn js_str(text: &str) -> String {
+    format!(r#""{}""#, text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// The open screen, its rows and each row's rectangle in canvas pixels
+/// (so Playwright can click a row by its label).
+fn menu_json(s: &Snapshot) -> String {
+    let Some(top) = s.menu.top() else {
+        return "null".to_string();
+    };
+    let ctx = s.menu_ctx.get();
+    let items = content(top.screen, &ctx).items;
+    let mut rows = String::new();
+    for (i, item) in items.iter().enumerate() {
+        let rect = s
+            .rows
+            .iter()
+            .find(|(row, _, _)| row.0 == i)
+            .map(|(_, node, transform)| {
+                let size = node.size * node.inverse_scale_factor;
+                let center = transform.translation * node.inverse_scale_factor;
+                format!(
+                    r#","x":{:.1},"y":{:.1},"w":{:.1},"h":{:.1}"#,
+                    center.x, center.y, size.x, size.y
+                )
+            })
+            .unwrap_or_default();
+        let _ = write!(
+            rows,
+            r#"{}{{"label":{}{}}}"#,
+            if i > 0 { "," } else { "" },
+            js_str(&item.label(s.menu_ctx.settings())),
+            rect
+        );
+    }
+    format!(
+        r#"{{"screen":"{}","depth":{},"focus":{},"items":[{}]}}"#,
+        top.screen.as_str(),
+        s.menu.stack.len(),
+        top.focus,
+        rows
+    )
+}
+
+fn progress_json(s: &Snapshot) -> String {
+    let level = s.progress.level(&s.level.0.id);
+    format!(
+        r#"{{"flights":{},"landings":{},"best":{}}}"#,
+        level.map_or(0, |l| l.flights),
+        level.map_or(0, |l| l.landings),
+        record_json(level.and_then(|l| l.best.as_ref()))
+    )
+}
+
+fn settings_json(s: &Snapshot) -> String {
+    let settings = s.menu_ctx.settings();
+    format!(
+        r#"{{"shake":{},"flash":{},"controlsHint":{},"pauseUnfocused":{},"fullscreen":{},"vsync":{}}}"#,
+        settings.shake,
+        settings.flash,
+        settings.controls_hint,
+        settings.pause_unfocused,
+        settings.fullscreen,
+        settings.vsync
+    )
 }
 
 fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
@@ -219,9 +328,19 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
     let failure = s.stats.failure.map_or("null".to_string(), |site| {
         format!(r#""{}""#, site.kind().as_str())
     });
+    let paused = s.pause.as_ref().is_some_and(|p| *p.get() == Pause::Paused);
+    let last_run = s.last_run.record.as_ref().map_or("null".to_string(), |r| {
+        format!(
+            r#"{{"record":{},"newBest":{}}}"#,
+            record_json(Some(r)),
+            s.last_run.new_best
+        )
+    });
+    let notice = s.notices.current().map_or("null".to_string(), js_str);
     format!(
         concat!(
-            r#"{{"state":"{}","tick":{},"frozen":{},"ready":{},"#,
+            r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"lastRun":{},"notice":{},"#,
+            r#""tick":{},"frozen":{},"ready":{},"#,
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
             r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"strips":{},"#,
@@ -230,10 +349,16 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
             r#""alarm":{{"level":{:.3},"active":{},"jolt":{:.3}}},"#,
-            r#""stats":{{"started":{},"fixed":{},"failure":{}}},"#,
+            r#""stats":{{"started":{},"fixed":{},"failure":{},"damage":{}}},"#,
             r#""entities":{{"players":{},"faults":{},"tapeStrips":{}}}}}"#,
         ),
         s.state.get().as_str(),
+        paused,
+        menu_json(s),
+        settings_json(s),
+        progress_json(s),
+        last_run,
+        notice,
         s.tick.0,
         s.virt.is_paused(),
         bridge.ready,
@@ -273,6 +398,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.stats.started,
         s.stats.fixed,
         failure,
+        damage_json(&s.stats.damage),
         s.players.iter().count(),
         s.faults.iter().count(),
         s.strips.iter().count(),

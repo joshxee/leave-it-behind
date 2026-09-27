@@ -102,6 +102,8 @@ pub struct Envelope {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LevelDef {
+    /// Stable key for saved progress. Never change it once released.
+    pub id: String,
     pub name: String,
     /// Seconds from launch to landing.
     pub duration_secs: f32,
@@ -253,6 +255,7 @@ mod tests {
 
     fn random_level() -> LevelDef {
         LevelDef {
+            id: "test".into(),
             name: "test".into(),
             duration_secs: 200.0,
             seed: None,

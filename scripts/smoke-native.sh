@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Native headless render smoke test. Runs the game with the `smoke` feature
-# (bevy_ci_testing), which follows ci/smoke.ron: screenshot at frame 60,
-# exit at frame 90. The screenshot lands in test-reports/smoke/.
+# (bevy_ci_testing), which follows ci/smoke.ron: the title screen at frame 40,
+# level one at frame 110, exit at frame 130. Screenshots land in
+# test-reports/smoke/ (title.png, smoke.png).
 #
 # On headless Linux, wraps the run in xvfb-run with Mesa software rendering.
 set -euo pipefail
@@ -9,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 OUT_DIR="test-reports/smoke"
 mkdir -p "$OUT_DIR"
-rm -f screenshot-smoke.png
+rm -f screenshot-smoke.png screenshot-title.png
 
 cargo build --features smoke
 
@@ -36,9 +37,11 @@ if grep -E "Path not found|panicked" "$LOG" >/dev/null; then
   exit 1
 fi
 
-if [ ! -f screenshot-smoke.png ]; then
-  echo "smoke: no screenshot produced" >&2
-  exit 1
-fi
-mv screenshot-smoke.png "$OUT_DIR/smoke.png"
-echo "smoke: ok -> $OUT_DIR/smoke.png"
+for shot in title smoke; do
+  if [ ! -f "screenshot-$shot.png" ]; then
+    echo "smoke: no $shot screenshot produced" >&2
+    exit 1
+  fi
+  mv "screenshot-$shot.png" "$OUT_DIR/$shot.png"
+done
+echo "smoke: ok -> $OUT_DIR/title.png, $OUT_DIR/smoke.png"

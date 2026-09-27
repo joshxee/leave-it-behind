@@ -1,15 +1,21 @@
 //! HUD: the countdown to arrival (top), the current room (top left), the
-//! tool belt and a context prompt (bottom), a controls hint at launch, and
-//! the landed / lost screen. It never shows where a fault is: that is the
-//! diagnostic screen's job. Uses the bundled Super Indie font when an
-//! `AssetServer` exists; headless tests fall back to the default font.
+//! tool belt and a context prompt (bottom), and a controls hint at launch.
+//! Shown during a flight and behind the end screen, hidden on the menus.
+//! It never shows where a fault is: that is the diagnostic screen's job.
+//! Also the notice line ([`Notices`]), shown above everything.
+//!
+//! Uses the bundled Super Indie font when an `AssetServer` exists; headless
+//! tests fall back to the default font.
+
+use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
 use crate::diagnostics::{DiagView, Diagnostics};
 use crate::faults::drift::Nav;
-use crate::level::{CurrentLevel, Journey, RunStats, format_clock};
+use crate::level::{Journey, format_clock};
 use crate::player::{Focus, InteractKind};
+use crate::settings::Settings;
 use crate::ship::CurrentRoom;
 use crate::tools::{Tool, ToolBelt, ToolState};
 use crate::{AppState, GameSet, palette};
@@ -18,7 +24,11 @@ pub const FONT_PATH: &str = "fonts/super-indie-font/SuperIndie-GOp7O.ttf";
 /// The controls hint shows for this long after launch.
 pub const HINT_SECS: f32 = 20.0;
 pub const CONTROLS_HINT: &str =
-    "WASD move   Mouse aim   Click use tool   1 / 2 or wheel switch tool   E interact";
+    "WASD move   Mouse aim   Click use tool   1 / 2 or wheel switch tool   E interact   Esc pause";
+/// Seconds a notice stays up.
+pub const NOTICE_SECS: f32 = 4.0;
+/// Above the HUD (10), diagnostics (20) and menus (40).
+const NOTICE_Z: i32 = 60;
 
 #[derive(Component, Debug)]
 pub struct TimerText;
@@ -35,27 +45,62 @@ pub struct BeltSlot(pub Tool);
 #[derive(Component, Debug)]
 struct HintText;
 
+/// A top-level HUD node, hidden outside a flight.
 #[derive(Component, Debug)]
-pub struct EndScreen;
+pub struct Hud;
 
 #[derive(Component, Debug)]
-struct EndTitle;
+struct NoticeBox;
 
 #[derive(Component, Debug)]
-struct EndBody;
+pub struct NoticeText;
+
+/// Short messages for the player ("Could not save settings."), shown one at
+/// a time at the bottom of the screen for [`NOTICE_SECS`] each.
+#[derive(Resource, Debug, Default)]
+pub struct Notices {
+    queue: VecDeque<String>,
+    /// The notice on screen and its seconds left.
+    showing: Option<(String, f32)>,
+}
+
+impl Notices {
+    pub fn push(&mut self, text: impl Into<String>) {
+        self.queue.push_back(text.into());
+    }
+
+    /// The notice on screen, if any.
+    pub fn current(&self) -> Option<&str> {
+        self.showing.as_ref().map(|(text, _)| text.as_str())
+    }
+
+    /// Advances the display by `dt` seconds.
+    pub fn tick(&mut self, dt: f32) {
+        if let Some((_, left)) = &mut self.showing {
+            *left -= dt;
+            if *left <= 0.0 {
+                self.showing = None;
+            }
+        }
+        if self.showing.is_none() {
+            self.showing = self.queue.pop_front().map(|text| (text, NOTICE_SECS));
+        }
+    }
+}
 
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Startup,
-            (spawn_hud, spawn_end_screen).in_set(GameSet::Input),
-        )
-        .add_systems(
-            Update,
-            (update_hud, update_prompt, update_end_screen).in_set(GameSet::Present),
-        );
+        app.init_resource::<Notices>()
+            .add_systems(
+                Startup,
+                (spawn_hud, spawn_notice_line).in_set(GameSet::Input),
+            )
+            .add_systems(
+                Update,
+                (show_hud, update_hud, update_prompt, show_notices).in_set(GameSet::Present),
+            );
     }
 }
 
@@ -112,6 +157,7 @@ pub fn prompt(i: &PromptInputs) -> &'static str {
 fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
     let font = |size| game_font(asset_server.as_deref(), size);
     commands.spawn((
+        Hud,
         Node {
             position_type: PositionType::Absolute,
             top: px(10),
@@ -128,6 +174,7 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         )],
     ));
     commands.spawn((
+        Hud,
         RoomText,
         Text::new(""),
         font(20.0),
@@ -141,6 +188,7 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         GlobalZIndex(10),
     ));
     commands.spawn((
+        Hud,
         Node {
             position_type: PositionType::Absolute,
             bottom: px(12),
@@ -195,50 +243,80 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
     ));
 }
 
-fn spawn_end_screen(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
-    let font = |size| game_font(asset_server.as_deref(), size);
+fn spawn_notice_line(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
     commands.spawn((
-        EndScreen,
         Node {
             position_type: PositionType::Absolute,
+            bottom: px(64),
             width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            row_gap: px(18),
             ..default()
         },
-        BackgroundColor(palette::UI_PANEL.with_alpha(0.75)),
-        GlobalZIndex(30),
-        Visibility::Hidden,
-        children![
-            (
-                EndTitle,
+        GlobalZIndex(NOTICE_Z),
+        children![(
+            NoticeBox,
+            Node {
+                padding: UiRect::axes(px(16), px(8)),
+                border: UiRect::all(px(2)),
+                ..default()
+            },
+            BackgroundColor(palette::UI_PANEL),
+            BorderColor::all(palette::UI_ACCENT),
+            Visibility::Hidden,
+            children![(
+                NoticeText,
                 Text::new(""),
-                font(56.0),
-                TextColor(palette::UI_TEXT)
-            ),
-            (
-                EndBody,
-                Text::new(""),
-                font(22.0),
+                game_font(asset_server.as_deref(), 18.0),
                 TextColor(palette::UI_TEXT),
-                TextLayout::justify(Justify::Center),
-            ),
-            (
-                Text::new("Press R to fly again"),
-                font(22.0),
-                TextColor(palette::UI_ACCENT)
-            ),
-        ],
+            )],
+        )],
     ));
+}
+
+/// The HUD belongs to a flight: hidden on the title and menu screens.
+fn show_hud(state: Res<State<AppState>>, mut huds: Query<&mut Visibility, With<Hud>>) {
+    let show = matches!(
+        state.get(),
+        AppState::Playing | AppState::Landed | AppState::Lost
+    );
+    let visibility = if show {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut v in &mut huds {
+        v.set_if_neq(visibility);
+    }
+}
+
+/// Real time, so notices time out while paused (or frozen in e2e) too.
+fn show_notices(
+    time: Res<Time<Real>>,
+    mut notices: ResMut<Notices>,
+    mut boxes: Query<&mut Visibility, With<NoticeBox>>,
+    mut texts: Query<&mut Text, With<NoticeText>>,
+) {
+    notices.tick(time.delta_secs());
+    let current = notices.current().unwrap_or_default();
+    for mut v in &mut boxes {
+        v.set_if_neq(if current.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        });
+    }
+    for mut t in &mut texts {
+        if t.0 != current {
+            t.0 = current.to_string();
+        }
+    }
 }
 
 fn update_hud(
     journey: Res<Journey>,
     room: Res<CurrentRoom>,
     belt: Res<ToolBelt>,
+    settings: Res<Settings>,
     state: Res<State<AppState>>,
     mut texts: ParamSet<(
         Query<&mut Text, With<TimerText>>,
@@ -273,7 +351,8 @@ fn update_hud(
             palette::UI_DIM
         };
     }
-    let show_hint = *state.get() == AppState::Playing && journey.elapsed < HINT_SECS;
+    let show_hint =
+        settings.controls_hint && *state.get() == AppState::Playing && journey.elapsed < HINT_SECS;
     for mut v in &mut hints {
         *v = if show_hint {
             Visibility::Inherited
@@ -315,66 +394,6 @@ fn update_prompt(
         };
         if *visibility != want {
             *visibility = want;
-        }
-    }
-}
-
-fn update_end_screen(
-    state: Res<State<AppState>>,
-    stats: Res<RunStats>,
-    journey: Res<Journey>,
-    level: Res<CurrentLevel>,
-    diag: Res<Diagnostics>,
-    belt: Res<ToolBelt>,
-    mut screens: Query<&mut Visibility, With<EndScreen>>,
-    mut texts: ParamSet<(
-        Query<&mut Text, With<EndTitle>>,
-        Query<&mut Text, With<EndBody>>,
-    )>,
-) {
-    let (title, body) = match state.get() {
-        AppState::Landed => (
-            "TOUCHDOWN".to_string(),
-            format!(
-                "You kept the ship together all the way down.\n\
-                 Faults fixed: {} of {}    Diagnostics used: {}    Tape left: {}s",
-                stats.fixed,
-                stats.started,
-                diag.uses,
-                belt.tape_left.ceil() as u32
-            ),
-        ),
-        AppState::Lost => {
-            let kind = stats.failure.map(|s| s.kind());
-            (
-                kind.map_or("LOST", |k| k.failure_title()).to_uppercase(),
-                format!(
-                    "{}\nSurvived {} of {}.    Faults fixed: {}",
-                    kind.map_or("", |k| k.failure_text()),
-                    format_clock(journey.elapsed.min(journey.duration)),
-                    format_clock(level.0.duration_secs),
-                    stats.fixed
-                ),
-            )
-        }
-        _ => (String::new(), String::new()),
-    };
-    let show = !title.is_empty();
-    for mut v in &mut screens {
-        *v = if show {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-    }
-    for mut t in &mut texts.p0() {
-        if t.0 != title {
-            t.0 = title.clone();
-        }
-    }
-    for mut t in &mut texts.p1() {
-        if t.0 != body {
-            t.0 = body.clone();
         }
     }
 }
@@ -424,6 +443,21 @@ mod tests {
             ..inputs()
         };
         assert_eq!(prompt(&empty), "The tape roll is empty");
+    }
+
+    #[test]
+    fn notices_show_one_at_a_time_then_clear() {
+        let mut n = Notices::default();
+        n.push("first");
+        n.push("second");
+        n.tick(0.0);
+        assert_eq!(n.current(), Some("first"));
+        n.tick(NOTICE_SECS - 0.1);
+        assert_eq!(n.current(), Some("first"));
+        n.tick(0.2);
+        assert_eq!(n.current(), Some("second"));
+        n.tick(NOTICE_SECS + 0.1);
+        assert_eq!(n.current(), None);
     }
 
     #[test]

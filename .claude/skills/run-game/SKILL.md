@@ -12,9 +12,12 @@ allowed-tools: Bash(cargo run --features dev) Bash(E2E=1 scripts/build-web.sh) B
 cargo run --features dev
 ```
 
-Opens a 1280×720 window. WASD moves, the mouse aims, left click uses the held
-tool, 1 / 2 or the wheel switch tools, E interacts, R restarts after landing or
-losing. Needs a display. For a headless check, use `scripts/smoke-native.sh`
+Opens a 1280×720 window on the title screen: any key opens the main menu,
+Enter on PLAY starts level one. WASD moves, the mouse aims, left click uses the
+held tool, 1 / 2 or the wheel switch tools, E interacts, Esc or P pauses, R
+flies again from the end screen. Menus: arrows or WASD, Enter, Esc, or the
+mouse. Settings and progress save to the OS app-data folder (`src/save/README.md`).
+Needs a display. For a headless check, use `scripts/smoke-native.sh`
 (screenshot in `test-reports/smoke/smoke.png`).
 Start from a scenario natively with `SCENARIO=bolts cargo run --features dev,e2e`.
 
@@ -29,7 +32,8 @@ Start from a scenario natively with `SCENARIO=bolts cargo run --features dev,e2e
    scripts/serve-web.sh   # run_in_background
    ```
 3. Wait until `curl -sf http://localhost:4173/index.html` succeeds. The URL is `http://localhost:4173`.
-   Query params: `?scenario=<name>` (see `src/scenarios/`), `?freeze=1`.
+   Query params: `?scenario=<name>` (see `src/scenarios/`; any scenario skips the
+   title screen), `?freeze=1`. Without a scenario the game starts on the title.
 
 ## Drive it
 
@@ -37,7 +41,8 @@ Start from a scenario natively with `SCENARIO=bolts cargo run --features dev,e2e
 node e2e/tools/capture.mjs --out test-reports/verify-<ts> [--scenario breach] [--keys "Move:480:100,Click:3000"] [--wait-state 's.faults.length === 0'] [--freeze --ticks 30]
 ```
 
-- Waits for `__bevyReady` (the game has rendered in `Playing`), then runs each
+- Waits for `__bevyReady` (the game has rendered its first screen: the title,
+  or a flight with `--scenario`), then runs each
   step and saves `NN-<step>.png` after it: `KEY` presses a key (`KeyD`, `e`,
   `Digit2`), `KEY:ms` holds it, `Move:X:Y` moves the mouse to canvas pixel
   (X, Y), `Click` clicks, `Click:ms` holds the left button, `Wheel:DY` scrolls.
@@ -46,8 +51,10 @@ node e2e/tools/capture.mjs --out test-reports/verify-<ts> [--scenario breach] [-
 - The canvas is 1280×720, one world unit per pixel, centered on the current
   room: world (x, y) is canvas (640 + x − camera.x, 360 − (y − camera.y)).
 - `--wait-state` takes a JS predicate over `s` (`window.__bevyState`; the shape
-  is `BevyState` in `e2e/specs/helpers.ts`: `state, tick, room, camera, player,
-  tool, tape, faults, looseBolts, nav, diag, alarm, stats, ...`).
+  is `BevyState` in `e2e/specs/helpers.ts`: `state, paused, menu, settings,
+  progress, lastRun, tick, room, camera, player, tool, tape, faults, looseBolts,
+  nav, diag, alarm, stats, ...`). To reach the main menu from the title, press
+  any key (`--keys "Enter"`); `s.menu.screen` names the open screen.
 - At about 15 fps under software rendering, each frame is one game tick: keep
   `--ticks` per step under ~600 (the tool waits 60 s per step).
 - Writes `states.json`, `console.json`, and `result.json`. Exits 1 on console

@@ -27,7 +27,7 @@ default = []
 # release or wasm builds.
 dev = ["bevy/dynamic_linking"]
 # Test bridge, determinism and scenario loading. Off in every player build.
-e2e = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys"]
+e2e = ["dep:wasm-bindgen", "dep:js-sys"]
 # Headless native smoke test driven by ci/smoke.ron (CI_TESTING_CONFIG).
 smoke = ["bevy/bevy_ci_testing"]
 
@@ -36,13 +36,17 @@ bevy = { version = "0.19.1", features = ["wav"] }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
 rand = { version = "0.10", default-features = false }
 getrandom = "0.4"
+# Save files (settings and progress). Both are already in Bevy's tree.
+ron = "0.12"
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bevy = { version = "0.19.1", features = ["wav", "web"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
-web-sys = { version = "0.3", optional = true, features = ["Window", "Location", "UrlSearchParams", "console"] }
+# `Storage` holds the saves (localStorage); the rest serves the e2e bridge.
+web-sys = { version = "0.3", features = ["Window", "Storage", "Location", "UrlSearchParams", "console"] }
 
 [dev-dependencies]
 # Unit tests check the art tables against the packs' manifest.json files.

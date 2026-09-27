@@ -5,7 +5,8 @@
 //! (`tests/integration/common.rs::test_app_with`), by the web build under the
 //! `e2e` feature (`?scenario=<name>`), and by `e2e/tools/capture.mjs --scenario`.
 //! A scenario is applied on top of every fresh run (launch and each restart),
-//! after the run's player, tools and fault plan exist.
+//! after the run's player, tools and fault plan exist. Any scenario skips the
+//! title screen; the plain boot (no scenario) is the title and menu situation.
 //!
 //! Adding one: add a variant, give it a name in [`Scenario::name`], add it to
 //! [`Scenario::ALL`], and write its setup function below.
@@ -15,10 +16,11 @@ use bevy::prelude::*;
 use crate::art::engineer::{contact, facing};
 use crate::faults::{Fault, Site, fault_bundle};
 use crate::level::{FaultPlan, Journey};
+use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
 use crate::ship::layout;
 use crate::tools::{Tool, ToolBelt};
-use crate::{AppState, RunSet};
+use crate::{AppState, Pause, RunSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scenario {
@@ -44,6 +46,10 @@ pub enum Scenario {
     BreachCritical,
     /// The `breach` scenario with one second of tape left.
     TapeLow,
+    /// Level one from launch, paused: the pause menu is open.
+    Paused,
+    /// Level one, paused, with the settings screen open over the pause menu.
+    Settings,
 }
 
 impl Scenario {
@@ -58,6 +64,8 @@ impl Scenario {
         Scenario::Landing,
         Scenario::BreachCritical,
         Scenario::TapeLow,
+        Scenario::Paused,
+        Scenario::Settings,
     ];
 
     pub fn name(self) -> &'static str {
@@ -72,6 +80,8 @@ impl Scenario {
             Scenario::Landing => "landing",
             Scenario::BreachCritical => "breach_critical",
             Scenario::TapeLow => "tape_low",
+            Scenario::Paused => "paused",
+            Scenario::Settings => "settings",
         }
     }
 
@@ -92,6 +102,8 @@ impl Scenario {
             Scenario::Landing => landing(world),
             Scenario::BreachCritical => breach_critical(world),
             Scenario::TapeLow => tape_low(world),
+            Scenario::Paused => paused(world),
+            Scenario::Settings => settings(world),
         }
     }
 }
@@ -199,6 +211,17 @@ fn breach_critical(world: &mut World) {
 fn tape_low(world: &mut World) {
     breach(world);
     world.resource_mut::<ToolBelt>().tape_left = 1.0;
+}
+
+fn paused(world: &mut World) {
+    world.resource_mut::<NextState<Pause>>().set(Pause::Paused);
+}
+
+fn settings(world: &mut World) {
+    let mut menu = world.resource_mut::<Menu>();
+    menu.open(Screen::Pause);
+    menu.open(Screen::Settings);
+    paused(world);
 }
 
 /// Scenario to apply to every run. Insert before the first `app.update()`.

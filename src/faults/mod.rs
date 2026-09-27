@@ -16,7 +16,7 @@ use bevy::prelude::*;
 
 pub use sites::Site;
 
-use crate::{AppState, GameSet, RunEntity};
+use crate::{GameSet, RunEntity, running};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaultKind {
@@ -164,15 +164,11 @@ impl Plugin for FaultsPlugin {
             .add_plugins((bolts::BoltsPlugin, breach::BreachPlugin, drift::DriftPlugin))
             .add_systems(
                 FixedUpdate,
-                tick_fault_clocks
-                    .in_set(GameSet::Simulate)
-                    .run_if(in_state(AppState::Playing)),
+                tick_fault_clocks.in_set(GameSet::Simulate).run_if(running),
             )
             .add_systems(
                 FixedUpdate,
-                resolve_faults
-                    .in_set(GameSet::Resolve)
-                    .run_if(in_state(AppState::Playing)),
+                resolve_faults.in_set(GameSet::Resolve).run_if(running),
             );
     }
 }

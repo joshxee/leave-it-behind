@@ -15,7 +15,7 @@ use crate::art::tiles::Tile;
 use crate::art::{Art, TILE};
 use crate::player::Player;
 use crate::shapes::{at, rect};
-use crate::{AppState, GameSet, RunSet, palette};
+use crate::{AppState, GameSet, RunSet, palette, running};
 use map::{Kind, ship};
 
 /// Draw order (z) of the ship's layers. Faults, tools and the engineer sit
@@ -103,12 +103,7 @@ impl Plugin for ShipPlugin {
                 OnEnter(AppState::Playing),
                 (reset_room, reset_walls).in_set(RunSet::Spawn),
             )
-            .add_systems(
-                FixedUpdate,
-                track_room
-                    .in_set(GameSet::Act)
-                    .run_if(in_state(AppState::Playing)),
-            )
+            .add_systems(FixedUpdate, track_room.in_set(GameSet::Act).run_if(running))
             .add_systems(
                 Update,
                 (frame_camera, place_curtains).in_set(GameSet::Present),

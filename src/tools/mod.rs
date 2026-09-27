@@ -18,7 +18,7 @@ use crate::player::{Facing, Locked, Movement, Player, PlayerIntent};
 use crate::shapes::{Shapes, at, rect};
 use crate::ship::Walls;
 use crate::ship::layout::{WallContact, wall_contact};
-use crate::{AppState, GameSet, RunEntity, RunSet, palette};
+use crate::{AppState, GameSet, RunEntity, RunSet, not_paused, palette, running};
 
 /// The bite snaps to a target within this distance of where it rests.
 pub const SNAP_RADIUS: f32 = 30.0;
@@ -145,9 +145,12 @@ impl Plugin for ToolsPlugin {
                 (select_tool, aim_tool, use_wrench, use_tape)
                     .chain()
                     .in_set(GameSet::Act)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
-            .add_systems(Update, draw_snap.in_set(GameSet::Present));
+            .add_systems(
+                Update,
+                draw_snap.in_set(GameSet::Present).run_if(not_paused),
+            );
     }
 }
 

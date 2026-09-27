@@ -36,5 +36,7 @@ fn spawn_version_text(mut commands: Commands) {
             right: px(6),
             ..default()
         },
+        // Above the menus (40) and notices (60): players read it off any screen.
+        GlobalZIndex(70),
     ));
 }

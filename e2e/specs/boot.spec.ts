@@ -1,13 +1,28 @@
 import { expect, test } from '@playwright/test';
-import { attachShot, collectErrors, gameState, openGame } from './helpers';
+import { attachShot, collectErrors, gameState, openGame, waitForState } from './helpers';
 
-test('boots into level one with no errors', async ({ page }, testInfo) => {
+test('boots to the title; the main menu starts level one', async ({ page }, testInfo) => {
   const errors = collectErrors(page);
   try {
     await openGame(page);
-    const s = await gameState(page);
-    expect(s.state).toBe('Playing');
-    expect(s.entities.players).toBe(1);
+    await expect(page.locator('#loading')).toBeHidden();
+    const title = await gameState(page);
+    expect(title.state).toBe('Menu');
+    expect(title.menu?.screen).toBe('Title');
+    expect(title.entities.players).toBe(0);
+    await attachShot(page, testInfo, 'title: LEAVE IT BEHIND in large letters, CLICK OR PRESS ANY KEY in cyan below, dark background, no HUD');
+
+    await page.keyboard.press('Enter');
+    const menu = await waitForState(page, (s) => s.menu?.screen === 'Main');
+    // The web build has no Quit: a page cannot close its tab.
+    expect(menu.menu!.items.map((i) => i.label)).toEqual(['PLAY', 'HOW TO PLAY', 'SETTINGS']);
+    expect(menu.menu!.focus).toBe(0);
+    await attachShot(page, testInfo, 'main-menu: LEAVE IT BEHIND title, PLAY row highlighted in cyan, HOW TO PLAY and SETTINGS rows, no QUIT');
+
+    await page.keyboard.press('Enter');
+    const s = await waitForState(page, (t) => t.state === 'Playing' && t.entities.players === 1);
+    expect(s.menu).toBeNull();
+    expect(s.paused).toBe(false);
     expect(s.room).toBe('Quarters');
     expect(s.tool).toBe('Wrench');
     expect(s.player.pose).toBe('wrench_hold');
