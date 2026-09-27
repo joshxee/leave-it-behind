@@ -87,14 +87,14 @@ test('the first loose bolts bring up a tip until they are fixed', async ({ page 
     const s = await waitForState(page, (t) => t.looseBolts.length === 3 && t.snap && t.coach.lines.length === 1);
     expect(s.journey.launched).toBe(true);
     expect(s.coach.lines[0]).toBe('Use the wrench [1] to screw the bolts back into the engine.');
-    await attachShot(page, testInfo, 'bolts-tip: engine room, three orange bolts on the left engine, engineer beside them with the wrench, panel under the timer reading Use the wrench [1] to screw the bolts back into the engine.');
+    await attachShot(page, testInfo, 'bolts-tip: engine room, three exposed threaded bolts on the left engine, engineer beside them, panel under the timer reading Use the wrench [1] to screw the bolts back into the engine.');
     await turnLooseBolts(page);
     const done = await waitForState(page, (t) => t.faults.length === 0);
     expect(done.coach.lines).toEqual([]);
     expect(done.stats.fixed).toBe(1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'bolts-tip-gone: engine room with every bolt grey and flush, no coaching panel');
+    await attachShot(page, testInfo, 'bolts-tip-gone: engine room with every threaded bolt seated flush, no coaching panel');
   }
 });
 
