@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use leave_it_behind::faults::{Fault, Site, fault_bundle};
 use leave_it_behind::level::campaign::level;
-use leave_it_behind::level::{CurrentLevel, Journey};
+use leave_it_behind::level::{CurrentLevel, FaultPlan, MAX_FLIGHT_SECS};
 use leave_it_behind::menu::Screen;
 use leave_it_behind::upgrades::{Upgrade, Upgrades};
 use leave_it_behind::{AppState, Scenario};
@@ -26,7 +26,8 @@ fn key(app: &mut App, key: KeyCode) {
     frame(app);
 }
 
-/// The `landing` scenario (3 s to arrival) flown to the end screen.
+/// The `landing` scenario (every fault fixed, landing 3 s after launch)
+/// flown to the end screen.
 fn landed() -> App {
     let mut app = test_app_with(Scenario::Landing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
@@ -49,7 +50,8 @@ fn landing_continues_to_the_upgrades_then_the_next_level() {
     frame(&mut app);
     assert_eq!(level_id(&app), "two");
     assert_eq!(upgrades(&app).picks(), &[Upgrade::RunFaster]);
-    assert_eq!(app.world().resource::<Journey>().duration, 210.0);
+    let plan = app.world().resource::<FaultPlan>().pending.len();
+    assert_eq!(plan, 7, "level two's faults, none started yet");
     assert_eq!(screen(&app), None, "the menu closes for the flight");
 }
 
@@ -153,16 +155,17 @@ fn play_on_the_main_menu_starts_a_new_game() {
 }
 
 #[test]
-fn every_level_lands_when_each_fault_is_fixed_within_twenty_seconds() {
+fn every_level_lands_within_three_minutes_when_each_fault_is_fixed_within_twenty_seconds() {
     // Level-design check over the whole campaign, as for level one in
-    // `level.rs`: repairs are applied directly.
+    // `level.rs`: repairs are applied directly. The flight lands the final
+    // approach after the last fix.
     for number in 1..=5 {
         let def = level(number).unwrap();
         let mut app = test_app();
         app.insert_resource(CurrentLevel(def.clone()));
         crate::common::boot(&mut app);
         assert_eq!(level_id(&app), def.id);
-        run_until(&mut app, secs(def.duration_secs + 5.0), |app| {
+        run_until(&mut app, secs(MAX_FLIGHT_SECS + 5.0), |app| {
             let mut q = app.world_mut().query::<&mut Fault>();
             for mut fault in q.iter_mut(app.world_mut()) {
                 if fault.elapsed >= 20.0 {
@@ -172,6 +175,11 @@ fn every_level_lands_when_each_fault_is_fixed_within_twenty_seconds() {
             state(app) != AppState::Playing
         });
         assert_eq!(state(&app), AppState::Landed, "{}", def.id);
+        let flown = app
+            .world()
+            .resource::<leave_it_behind::level::Journey>()
+            .elapsed;
+        assert!(flown <= MAX_FLIGHT_SECS + 3.5, "{} took {flown}s", def.id);
         let stats = app
             .world()
             .resource::<leave_it_behind::level::RunStats>()

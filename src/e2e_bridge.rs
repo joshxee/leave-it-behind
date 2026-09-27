@@ -26,7 +26,9 @@ use crate::diagnostics::Diagnostics;
 use crate::faults::bolts::Bolt;
 use crate::faults::drift::{Nav, in_band};
 use crate::faults::{Fault, Vitals};
-use crate::level::{CurrentLevel, Damage, Journey, LastRun, Progress, RunRecord, RunStats};
+use crate::level::{
+    CurrentLevel, Damage, FaultPlan, Journey, LastRun, Progress, RunRecord, RunStats,
+};
 use crate::menu::{Menu, MenuCtx, MenuRow, content};
 use crate::player::sprite::EngineerSprite;
 use crate::player::{Facing, Focus, InteractKind, Locked, Movement, Player};
@@ -154,6 +156,7 @@ struct Snapshot<'w, 's> {
     alarm: Res<'w, Alarm>,
     vitals: Res<'w, Vitals>,
     stats: Res<'w, RunStats>,
+    plan: Res<'w, FaultPlan>,
     coach: Res<'w, Coach>,
     players: Query<
         'w,
@@ -415,14 +418,14 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
             r#""tool":"{}","tape":{:.3},"snap":{},"turning":{},"taping":{},"tapeContact":{},"strips":{},"#,
-            r#""journey":{{"elapsed":{:.3},"remaining":{:.3},"duration":{:.1},"launched":{}}},"#,
+            r#""journey":{{"elapsed":{:.3},"launched":{},"cleared":{}}},"#,
             r#""coach":{},"console":{{"x":{:.1},"y":{:.1}}},"#,
             r#""faults":[{}],"looseBolts":[{}],"doors":[{}],"#,
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
             r#""alarm":{{"level":{:.3},"active":{},"jolt":{:.3}}},"#,
             r#""vitals":{{"oxygen":{:.3},"heat":{:.3},"gauges":{}}},"#,
-            r#""stats":{{"started":{},"fixed":{},"failure":{},"damage":{}}},"#,
+            r#""stats":{{"started":{},"fixed":{},"total":{},"failure":{},"damage":{}}},"#,
             r#""entities":{{"players":{},"faults":{},"tapeStrips":{}}}}}"#,
         ),
         s.state.get().as_str(),
@@ -457,9 +460,8 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         tape_contact,
         s.strips.iter().count(),
         s.journey.elapsed,
-        s.journey.remaining(),
-        s.journey.duration,
         s.journey.launched,
+        s.journey.cleared(),
         coach_json(s),
         console.x,
         console.y,
@@ -480,6 +482,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         gauges_json(s),
         s.stats.started,
         s.stats.fixed,
+        s.plan.total(&s.stats),
         failure,
         damage_json(&s.stats.damage),
         s.players.iter().count(),

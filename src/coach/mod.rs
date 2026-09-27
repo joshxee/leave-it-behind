@@ -1,8 +1,8 @@
 //! Coaching: level one's first flight walks a new player through the game.
 //! It never pauses anything; it only points the way.
 //!
-//! - Pre-flight check: the flight waits to launch (the countdown and the
-//!   fault schedule hold, see [`Journey::launched`]) until the engineer has
+//! - Pre-flight check: the flight waits to launch (the fault schedule
+//!   holds, see [`Journey::launched`]) until the engineer has
 //!   looked at the diagnostic screen. Then it launches as a normal flight,
 //!   with a short note on what that screen is for.
 //! - Tips: the first fault of each kind brings up a tip on how to fix it,
@@ -26,7 +26,7 @@ use crate::scenarios::apply_active_scenario;
 use crate::settings::Settings;
 use crate::shapes::Shapes;
 use crate::ship::layout;
-use crate::tools::{TapeLaid, ToolState, WrenchTightened};
+use crate::tools::TapeLaid;
 use crate::ui::game_font;
 use crate::{ActiveScenario, AppState, GameSet, RunSet, palette, running};
 
@@ -36,7 +36,7 @@ pub const LAUNCH_NOTE: &str =
     "Cleared for launch. When the alarm goes off, check this console to find the fault.";
 /// Above the HUD (10) and the diagnostic screen (20), below menus (40).
 const COACH_Z: i32 = 25;
-/// Just under the countdown, clear of the diagnostic screen's panel.
+/// Just under the repairs count, clear of the diagnostic screen's panel.
 const PANEL_TOP: f32 = 56.0;
 const PANEL_MAX_WIDTH: f32 = 900.0;
 
@@ -320,25 +320,29 @@ fn spawn_panel(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
     ));
 }
 
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
 enum CoachPing {
     Diagnostic,
-    Bolt,
+    /// One per bolt of the first loose-bolts panel; shown while that bolt
+    /// is still loose.
+    Bolt(Vec2),
     Breach,
     Chair,
 }
 
 fn spawn_pings(mut commands: Commands, shapes: Res<Shapes>) {
-    let bolt = FIRST_BOLTS.bolts().expect("first bolt target")[0];
-    for (kind, pos) in [
+    let mut kinds = vec![
         (
             CoachPing::Diagnostic,
             layout::ship().center(layout::ship().console_cell()),
         ),
-        (CoachPing::Bolt, bolt),
         (CoachPing::Breach, FIRST_BREACH.pos()),
         (CoachPing::Chair, layout::helm_seat()),
-    ] {
+    ];
+    for pos in FIRST_BOLTS.bolts().expect("first bolt targets") {
+        kinds.push((CoachPing::Bolt(pos), pos));
+    }
+    for (kind, pos) in kinds {
         commands.spawn((
             kind,
             shapes.ring(24.0, Color::srgb_u8(45, 155, 255)),
@@ -350,10 +354,8 @@ fn spawn_pings(mut commands: Commands, shapes: Res<Shapes>) {
 
 fn note_ping_interactions(
     mut presses: MessageReader<InteractPressed>,
-    mut tightened: MessageReader<WrenchTightened>,
+    mut fixed: MessageReader<FaultFixed>,
     mut tape: MessageReader<TapeLaid>,
-    bolts: Query<&Bolt>,
-    tools: Res<ToolState>,
     mut settings: ResMut<Settings>,
 ) {
     for press in presses.read() {
@@ -363,19 +365,10 @@ fn note_ping_interactions(
             None => {}
         }
     }
-    for msg in tightened.read() {
-        if bolts.get(msg.target).is_ok_and(|bolt| {
-            bolt.panel == FIRST_BOLTS && bolt.pos == FIRST_BOLTS.bolts().unwrap()[0]
-        }) {
+    for msg in fixed.read() {
+        if msg.site == FIRST_BOLTS {
             settings.pings_seen.first_bolt = true;
         }
-    }
-    if let Some(turn) = tools.turn
-        && bolts.get(turn.target).is_ok_and(|bolt| {
-            bolt.panel == FIRST_BOLTS && bolt.pos == FIRST_BOLTS.bolts().unwrap()[0]
-        })
-    {
-        settings.pings_seen.first_bolt = true;
     }
     for msg in tape.read() {
         if msg.point.distance(FIRST_BREACH.pos()) <= crate::faults::breach::BREACH_RADIUS {
@@ -390,6 +383,7 @@ fn draw_pings(
     journey: Res<Journey>,
     settings: Res<Settings>,
     faults: Query<&Fault>,
+    bolts: Query<&Bolt>,
     mut pings: Query<(&CoachPing, &mut Visibility, &mut Transform)>,
 ) {
     let has = |site: Site| {
@@ -402,7 +396,12 @@ fn draw_pings(
         let show = coach.active
             && match ping {
                 CoachPing::Diagnostic => !journey.launched && !settings.pings_seen.diagnostic,
-                CoachPing::Bolt => has(FIRST_BOLTS) && !settings.pings_seen.first_bolt,
+                CoachPing::Bolt(pos) => {
+                    !settings.pings_seen.first_bolt
+                        && bolts
+                            .iter()
+                            .any(|bolt| bolt.panel == FIRST_BOLTS && bolt.pos == *pos && bolt.loose)
+                }
                 CoachPing::Breach => has(FIRST_BREACH) && !settings.pings_seen.first_breach,
                 CoachPing::Chair => has(Site::Helm) && !settings.pings_seen.cockpit_chair,
             };
@@ -459,7 +458,7 @@ mod tests {
     }
 
     fn launched() -> Journey {
-        Journey::new(270.0)
+        Journey::default()
     }
 
     const ON: Coach = Coach {

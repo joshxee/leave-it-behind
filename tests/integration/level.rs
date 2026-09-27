@@ -21,12 +21,14 @@ fn elapsed(app: &App) -> f32 {
 }
 
 #[test]
-fn the_countdown_starts_at_two_and_a_half_minutes() {
+fn a_flight_starts_with_every_fault_still_to_fix() {
     let mut app = test_app();
     boot(&mut app);
     let journey = *app.world().resource::<Journey>();
-    assert_eq!(journey.duration, 150.0);
-    assert!(journey.remaining() > 149.9);
+    assert!(journey.elapsed < 0.1 && !journey.cleared());
+    let plan = app.world().resource::<FaultPlan>().clone();
+    let stats = app.world().resource::<RunStats>().clone();
+    assert_eq!(plan.total(&stats), 4);
 }
 
 #[test]
@@ -63,17 +65,44 @@ fn level_one_teaches_each_fix_in_the_same_order_every_run() {
         });
         started
     };
-    let expected = vec![Site::PortEngineInner, Site::EngineRoomStarboard, Site::Helm];
+    let expected = vec![Site::PortEngineInner, Site::EngineRoomPort, Site::Helm];
     assert_eq!(firsts(1), expected);
     assert_eq!(firsts(12345), expected);
 }
 
 #[test]
-fn reaching_zero_lands_the_ship() {
+fn fixing_every_fault_lands_the_ship_after_the_final_approach() {
     let mut app = test_app_with(Scenario::Landing);
     assert_eq!(state(&app), AppState::Playing);
     let frames = run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     assert!((170..=190).contains(&frames), "{frames} frames");
+}
+
+#[test]
+fn a_flight_never_lands_with_a_fault_left() {
+    // Level one's schedule is done by 1:30; with the last fault left
+    // unfixed (and its clock stretched) the ship flies on well past that.
+    let mut app = test_app();
+    boot(&mut app);
+    let mut last = None;
+    run_until(&mut app, secs(150.0), |app| {
+        let pending = app.world().resource::<FaultPlan>().pending.len();
+        let mut q = app.world_mut().query::<&mut Fault>();
+        for mut fault in q.iter_mut(app.world_mut()) {
+            if pending > 0 && fault.elapsed >= 20.0 {
+                fault.repair = 1.0;
+            } else if pending == 0 {
+                last.get_or_insert(fault.site);
+                // Keep it from failing: this test is about landing.
+                fault.elapsed = 0.0;
+                fault.clock = 1e6;
+            }
+        }
+        state(app) != AppState::Playing
+    });
+    assert!(last.is_some());
+    assert_eq!(state(&app), AppState::Playing);
+    assert!(!app.world().resource::<Journey>().cleared());
 }
 
 #[test]
@@ -127,8 +156,9 @@ fn r_starts_a_fresh_run() {
     put_player(&mut app, layout::helm_seat());
     app.world_mut().resource_mut::<ToolBelt>().tape_left = 3.0;
     run_until(&mut app, secs(12.0), |app| elapsed(app) >= 11.0);
-    let duration = app.world().resource::<Journey>().duration;
-    app.world_mut().resource_mut::<Journey>().elapsed = duration;
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Landed);
     run_until(&mut app, 5, |app| state(app) == AppState::Landed);
 
     tap(&mut app, KeyCode::KeyR);
