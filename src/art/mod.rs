@@ -5,6 +5,7 @@
 //! which is fine because nothing renders.
 
 pub mod engineer;
+pub mod maintenance;
 pub mod tiles;
 
 use bevy::image::{ImageLoaderSettings, ImageSampler};
@@ -64,6 +65,7 @@ pub struct ArtPlugin;
 
 impl Plugin for ArtPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(maintenance::MaintenanceArtPlugin);
         let world = app.world_mut();
         let (Some(server), true) = (
             world.get_resource::<AssetServer>().cloned(),
@@ -117,6 +119,13 @@ mod tests {
             assert!(
                 listed.contains(&path),
                 "{path} missing from assets/RUNTIME_ASSETS"
+            );
+        }
+        for (name, ..) in maintenance::SHEETS {
+            let path = format!("maintenance/{name}.png");
+            assert!(
+                listed.contains(&path.as_str()),
+                "{path} missing from runtime assets"
             );
         }
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");

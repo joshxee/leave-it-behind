@@ -10,7 +10,7 @@ use bevy::prelude::*;
 pub use super::map::{RoomId, WALL_HALF, ship};
 
 /// Smallest area the camera always shows (the reference window size).
-pub const VIEW: Vec2 = Vec2::new(1280.0, 720.0);
+pub const VIEW: Vec2 = Vec2::new(1408.0, 792.0);
 
 /// Walls, locked doors and door jambs. Tape sticks to these.
 pub fn walls() -> Vec<Rect> {

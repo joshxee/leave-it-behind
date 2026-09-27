@@ -11,9 +11,10 @@ use std::f32::consts::TAU;
 use bevy::prelude::*;
 
 use super::{Fault, FaultKind};
+use crate::art::maintenance::MaintenanceArt as Art;
 use crate::player::{InteractKind, InteractPressed, Interactable, Locked, Player, PlayerIntent};
 use crate::settings::Settings;
-use crate::shapes::{Shapes, at, rect};
+use crate::shapes::{at, rect};
 use crate::ship::layout;
 use crate::{AppState, GameRng, GameSet, RunSet, not_paused, palette, running};
 
@@ -51,7 +52,7 @@ pub struct Nav {
 
 /// Display half-size the normalized marker coordinates map onto.
 fn marker_half() -> Vec2 {
-    layout::nav_screen().half_size() - Vec2::splat(8.0)
+    layout::nav_screen().half_size() - Vec2::splat(24.0)
 }
 
 /// Just outside the band: the marker turns amber so the player knows the band is close.
@@ -91,6 +92,7 @@ pub fn step_hold(hold: f32, inside: bool, dt: f32) -> f32 {
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 enum NavPart {
     Frame,
+    Sweep,
     /// Outline of the centre square: lights up while the marker is inside.
     Target,
     Marker,
@@ -117,39 +119,35 @@ impl Plugin for DriftPlugin {
     }
 }
 
-fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
+fn spawn_helm(mut commands: Commands, art: Res<Art>) {
     let screen = layout::nav_screen();
     let c = screen.center();
     commands.spawn((
         NavPart::Frame,
-        rect(screen.size() + 8.0, palette::NAV_FRAME),
-        at(c, 1.1),
+        art.sprite("radar", 0, screen.size() * Vec2::new(1.0, 144.0 / 128.0)),
+        at(c - Vec2::Y * screen.height() / 16.0, 1.1),
     ));
-    commands.spawn((rect(screen.size(), palette::NAV_SCREEN), at(c, 1.12)));
-    // Two crossing bands; their overlap in the middle is the target.
-    // Same scale the marker is drawn at, so "looks inside" means "is inside".
+    commands.spawn((
+        NavPart::Sweep,
+        art.sprite("radar-sweep", 0, screen.size() * (104.0 / 128.0)),
+        at(c, 1.12),
+    ));
+    // Use exactly the same coordinate mapping as the marker and in_band.
     let band = marker_half() * BAND_HALF;
-    let side = band * 2.0;
-    for (offset, size) in [
-        (Vec2::new(0.0, band.y), Vec2::new(side.x + 4.0, 4.0)),
-        (Vec2::new(0.0, -band.y), Vec2::new(side.x + 4.0, 4.0)),
-        (Vec2::new(band.x, 0.0), Vec2::new(4.0, side.y + 4.0)),
-        (Vec2::new(-band.x, 0.0), Vec2::new(4.0, side.y + 4.0)),
-    ] {
-        commands.spawn((
-            NavPart::Target,
-            rect(size, palette::UI_DIM),
-            at(c + offset, 1.155),
-        ));
+    for axis in [Vec2::X, Vec2::Y] {
+        for side in [-1.0, 1.0] {
+            let size = if axis == Vec2::X {
+                Vec2::new(2.0, band.y * 2.0)
+            } else {
+                Vec2::new(band.x * 2.0, 2.0)
+            };
+            commands.spawn((
+                NavPart::Target,
+                rect(size, palette::NAV_MARKER),
+                at(c + band * axis * side, 1.14),
+            ));
+        }
     }
-    commands.spawn((
-        rect(Vec2::new(screen.width(), side.y), palette::NAV_BAND),
-        at(c, 1.14),
-    ));
-    commands.spawn((
-        rect(Vec2::new(side.x, screen.height()), palette::NAV_BAND),
-        at(c, 1.14),
-    ));
     commands.spawn((
         NavPart::Hold,
         rect(Vec2::new(0.0, 6.0), palette::NAV_MARKER),
@@ -157,7 +155,7 @@ fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
     ));
     commands.spawn((
         NavPart::Marker,
-        shapes.circle(8.0, palette::NAV_MARKER),
+        art.sprite("nav-ship", 0, Vec2::new(16.0, 20.0)),
         at(c, 1.16),
     ));
 
@@ -167,16 +165,12 @@ fn spawn_helm(mut commands: Commands, shapes: Res<Shapes>) {
             kind: InteractKind::Helm,
             range: HELM_RANGE,
         },
-        shapes.circle(12.0, palette::JOYSTICK_BASE),
+        art.sprite("helm-base", 0, Vec2::splat(32.0)),
         at(joystick, 1.3),
     ));
     commands.spawn((
-        shapes.ring(12.0, palette::JOYSTICK_RING),
-        at(joystick, 1.32),
-    ));
-    commands.spawn((
         NavPart::Stick,
-        shapes.circle(6.0, palette::JOYSTICK),
+        art.sprite("helm-stick", 0, Vec2::new(12.0, 18.0)),
         at(joystick, 1.35),
     ));
 }
@@ -255,6 +249,7 @@ fn steer(
 }
 
 fn draw_nav(
+    art: Res<Art>,
     nav: Res<Nav>,
     time: Res<Time>,
     settings: Res<Settings>,
@@ -272,20 +267,28 @@ fn draw_nav(
     let blink = (time.elapsed_secs() * 4.0).fract() < 0.5;
     for (part, mut transform, mut sprite) in &mut parts {
         match part {
+            NavPart::Sweep => {
+                art.frame(
+                    &mut sprite,
+                    "radar-sweep",
+                    (time.elapsed_secs() * 10.0) as usize % 24,
+                );
+                sprite.color = Color::WHITE.with_alpha(0.35);
+            }
             NavPart::Frame => {
                 // Without flashing, the frame stays red instead of blinking.
                 sprite.color = match (alarm, blink) {
-                    (false, _) => palette::NAV_FRAME,
-                    (true, true) => palette::NAV_ALERT,
+                    (false, _) => Color::WHITE,
+                    (true, true) => Color::WHITE.mix(&palette::NAV_ALERT, 0.3),
                     (true, false) => {
-                        palette::NAV_FRAME.mix(&palette::NAV_ALERT, 1.0 - settings.flash_scale())
+                        Color::WHITE.mix(&palette::NAV_ALERT, 0.3 * (1.0 - settings.flash_scale()))
                     }
                 };
             }
             NavPart::Marker => {
                 let p = screen.center() + nav.marker * half;
                 transform.translation = p.extend(transform.translation.z);
-                // Red far off, amber close, the calm pale cyan inside (and bigger).
+                // Red far off, amber close, pale cyan inside the square.
                 sprite.color = if !alarm {
                     palette::NAV_MARKER
                 } else if near {
@@ -293,8 +296,11 @@ fn draw_nav(
                 } else {
                     palette::NAV_ALERT
                 };
-                let r = if inside { 11.0 } else { 8.0 };
-                sprite.custom_size = Some(Vec2::splat(r * 2.0));
+                art.frame(
+                    &mut sprite,
+                    "nav-ship",
+                    (time.elapsed_secs() * 6.0) as usize % 2,
+                );
             }
             NavPart::Target => {
                 sprite.color = if inside {
@@ -307,10 +313,10 @@ fn draw_nav(
             }
             NavPart::Hold => {
                 let hold = drift.map_or(0.0, |f| f.repair);
-                let width = screen.width() * hold;
-                transform.translation.x = screen.min.x + width / 2.0;
-                transform.translation.y = screen.min.y + 6.0;
-                sprite.custom_size = Some(Vec2::new(width, 6.0));
+                let width = screen.width() * 0.72 * hold;
+                transform.translation.x = screen.center().x - screen.width() * 0.375 + width / 2.0;
+                transform.translation.y = screen.center().y - screen.height() * 0.53125;
+                sprite.custom_size = Some(Vec2::new(width, 2.0));
             }
             NavPart::Stick => {
                 let p = layout::joystick() + nav.stick * 7.0;

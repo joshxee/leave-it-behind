@@ -15,11 +15,11 @@ The ship as data, drawn with the derelict-ship tiles, and the camera that frames
 
 ## Drawing
 
-Layers (`z`): space (only seen through breaches), floor (quadrants under hull walls), structure (walls, doors, the cockpit window row), props (the cockpit console row, crates, lockers, racks, pipe stacks, control consoles, and placeholder engine blocks and bunk in the pack palette), then faults, tools and the engineer. Four `Curtain`s cover everything outside the current room's frame. Wall sprites carry `WallCell` so a breach can swap the tile (`show_tile`); `reset_walls` restores them each run. Flat compositing for now; the raised-wall look (the depth study) needs new tiles (`docs/ART_REQUESTS.md`).
+The maintenance pack supplies full-height wall faces and narrow caps pushed to the outer edge of each room. `depth.rs` selects one of 16 joining masks × 16 room-facing variants, sorts the engineer and engines by ground contact, and places door art on the same border. All foreground walls retain the same 22-unit height. The map collision cores remain a walking guard band. Floor art extends beneath the narrower caps; curtains include the raised silhouette. Breaches and tape use `wall_art_point` so holes, strips and the tape feed meet on the same surface.
 
 - **Resources:** `CurrentRoom`, `Colliders` (walls + props; door leaves are added by whoever moves the player), `Walls` (tape sticks to these).
-- **Components:** `CameraRig { anchor, shake }`, `EngineBlock` + `BaseColor` (tinted by the bolts fault), `WallCell`, `Door`.
-- **Systems:** `spawn_camera`, `spawn_ship`, `spawn_doors` (Startup); `reset_room`, `reset_walls`, `close_doors` (`OnEnter(Playing)`); `operate_doors` (FixedUpdate/Move), `track_room` (FixedUpdate/Act); `frame_camera`, `place_curtains`, `draw_doors` (Update/Present).
-- **Functions:** `cursor_to_world` (matches the camera's `ScalingMode::AutoMin` 1280×720 projection), `room_frame`, `step_door`, `door_assist`, `leaf_rect`.
+- **Components:** `CameraRig { anchor, shake }`, `EngineBlock` (tinted by the bolts fault), `WallCell`, `Door`.
+- **Systems:** `spawn_camera`, `spawn_ship`, `spawn_doors` (Startup); `reset_room`, `close_doors` (`OnEnter(Playing)`); `operate_doors` (FixedUpdate/Move), `track_room` (FixedUpdate/Act); `frame_camera`, `place_curtains`, `draw_doors`, depth presentation systems (Update/Present).
+- **Functions:** `cursor_to_world` (matches the camera's `ScalingMode::AutoMin` 1408×792 world view within a 1280×720 window), `room_frame`, `step_door`, `door_assist`, `leaf_rect`.
 - **Tests:** unit tests in `map.rs`, `layout.rs`, `doors.rs`, `mod.rs`; integration tests in `tests/integration/player.rs` (room cut, traversal time) and `tests/integration/doors.rs` (opening ahead of the engineer, closed doors block, steering into the doorway, the locked hatch); e2e in `e2e/specs/controls.spec.ts`.
 - **Scenarios:** `quiet` (walk anywhere without faults).

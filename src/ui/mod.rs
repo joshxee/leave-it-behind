@@ -138,7 +138,7 @@ pub struct PromptInputs {
 /// What the bottom prompt says, most specific first.
 pub fn prompt(i: &PromptInputs) -> &'static str {
     if i.at_helm {
-        "WASD  steer the marker into the centre band      E  leave the helm"
+        "WASD  hold the ship inside the square      E  leave the helm"
     } else if i.diag_open {
         "E  close diagnostics"
     } else if i.focus == Some(InteractKind::Helm) {

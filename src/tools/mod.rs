@@ -14,8 +14,9 @@
 use bevy::prelude::*;
 
 use crate::art::engineer::{contact, facing};
+use crate::art::maintenance::MaintenanceArt;
 use crate::player::{Facing, Locked, Movement, Player, PlayerIntent};
-use crate::shapes::{Shapes, at, rect};
+use crate::shapes::{Shapes, at};
 use crate::ship::Walls;
 use crate::ship::layout::{WallContact, wall_contact};
 use crate::{AppState, GameSet, RunEntity, RunSet, not_paused, palette, running};
@@ -124,6 +125,12 @@ pub struct TapeLaid {
 #[derive(Component, Debug)]
 pub struct TapeStrip;
 
+#[derive(Component, Debug)]
+struct TapeApplication(f32);
+
+#[derive(Component, Debug)]
+struct TapeFeed;
+
 /// The ring round the bolt the wrench is snapped to.
 #[derive(Component, Debug)]
 struct SnapRing;
@@ -149,7 +156,9 @@ impl Plugin for ToolsPlugin {
             )
             .add_systems(
                 Update,
-                draw_snap.in_set(GameSet::Present).run_if(not_paused),
+                (draw_snap, animate_tape, draw_tape_feed)
+                    .in_set(GameSet::Present)
+                    .run_if(not_paused),
             );
     }
 }
@@ -157,6 +166,7 @@ impl Plugin for ToolsPlugin {
 fn reset_tools(
     mut commands: Commands,
     shapes: Res<Shapes>,
+    art: Res<MaintenanceArt>,
     mut belt: ResMut<ToolBelt>,
     mut state: ResMut<ToolState>,
 ) {
@@ -167,6 +177,13 @@ fn reset_tools(
         RunEntity,
         shapes.ring(13.0, palette::SNAP),
         at(Vec2::ZERO, 3.2),
+        Visibility::Hidden,
+    ));
+    commands.spawn((
+        TapeFeed,
+        RunEntity,
+        art.sprite("tape-strip", 5, Vec2::new(1.0, 4.0)),
+        Transform::default(),
         Visibility::Hidden,
     ));
 }
@@ -277,6 +294,7 @@ fn use_wrench(
 }
 
 fn use_tape(
+    art: Res<MaintenanceArt>,
     mut commands: Commands,
     time: Res<Time>,
     intent: Res<PlayerIntent>,
@@ -306,22 +324,57 @@ fn use_tape(
     if state.strip_carry >= TAPE_STRIP_EVERY {
         state.strip_carry = 0.0;
         state.strips += 1;
-        commands.spawn((TapeStrip, RunEntity, tape_strip(contact, state.strips)));
+        commands.spawn((
+            TapeStrip,
+            TapeApplication(0.0),
+            RunEntity,
+            tape_strip(&art, contact, state.strips),
+        ));
     }
 }
 
 /// A strip stuck on the wall face at `contact`, angled a little differently
 /// each time.
-fn tape_strip(contact: WallContact, n: u32) -> (Sprite, Transform) {
-    // Deterministic jitter in [-0.5, 0.5): cosmetic, so no RNG draw.
+fn tape_strip(art: &MaintenanceArt, contact: WallContact, n: u32) -> (Sprite, Transform) {
     let jitter = (n.wrapping_mul(2_654_435_761) % 1000) as f32 / 1000.0 - 0.5;
     let tangent = contact.normal.perp();
-    let pos = contact.point - contact.normal * 3.0 + tangent * jitter * 20.0;
-    let angle = tangent.to_angle() + jitter * 0.5;
+    let pos = crate::ship::depth::wall_art_point(contact.point, contact.normal)
+        + tangent * jitter * 12.0
+        + contact.normal * ((n % 3) as f32 - 1.0) * 3.0;
     (
-        rect(Vec2::new(24.0, 8.0), palette::TAPE),
-        Transform::from_translation(pos.extend(1.7)).with_rotation(Quat::from_rotation_z(angle)),
+        art.sprite("tape-strip", 0, Vec2::new(32.0, 12.0)),
+        Transform::from_translation(pos.extend(5.0 + (n % 3) as f32 * 0.002))
+            .with_rotation(Quat::from_rotation_z(tangent.to_angle() + jitter * 0.12)),
     )
+}
+
+fn animate_tape(
+    time: Res<Time>,
+    art: Res<MaintenanceArt>,
+    mut strips: Query<(&mut TapeApplication, &mut Sprite)>,
+) {
+    for (mut application, mut sprite) in &mut strips {
+        application.0 = (application.0 + time.delta_secs()).min(0.42);
+        art.frame(&mut sprite, "tape-strip", (application.0 / 0.07) as usize);
+    }
+}
+
+fn draw_tape_feed(
+    state: Res<ToolState>,
+    mut feed: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<TapeFeed>>,
+) {
+    for (mut sprite, mut transform, mut visibility) in &mut feed {
+        let Some(contact) = state.taping else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+        *visibility = Visibility::Inherited;
+        let end = crate::ship::depth::wall_art_point(contact.point, contact.normal);
+        let delta = end - state.tip;
+        sprite.custom_size = Some(Vec2::new(delta.length(), 4.0));
+        transform.translation = ((end + state.tip) / 2.0).extend(4.95);
+        transform.rotation = Quat::from_rotation_z(delta.to_angle());
+    }
 }
 
 /// The snapped bolt gets a ring, which fills in as the turn goes round.
@@ -377,11 +430,15 @@ mod tests {
 
     #[test]
     fn tape_strip_lies_along_the_wall() {
+        let mut app = App::new();
+        app.add_plugins(crate::art::maintenance::MaintenanceArtPlugin);
+        let art = app.world().resource::<MaintenanceArt>();
         let contact = WallContact {
             point: Vec2::new(0.0, 260.0),
             normal: Vec2::NEG_Y,
         };
-        let (_, t) = tape_strip(contact, 3);
-        assert!((t.translation.y - 263.0).abs() < 1e-3, "on the wall face");
+        let (_, t) = tape_strip(art, contact, 3);
+        let projected = crate::ship::depth::wall_art_point(contact.point, contact.normal);
+        assert!((t.translation.y - projected.y - 3.0).abs() < 1e-3);
     }
 }

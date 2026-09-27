@@ -1,16 +1,12 @@
-//! Hull breaches: a hole in an airlock or main hull wall. The wall's tile
-//! turns into a breach (space shows through it) and air rushes out in
-//! pulses. Holding the tape over it for [`SEAL_SECS`] seals it, and the tile
-//! becomes a strapped patch for the rest of the run. Tape laid anywhere else
-//! is wasted.
+//! Hull breaches are projected onto the raised wall face. Air pulses out
+//! until [`SEAL_SECS`] of tape seals the hole. The woven strips persist
+//! for the rest of the run; tape laid elsewhere is wasted.
 
 use bevy::prelude::*;
 
-use super::{Fault, FaultFixed, FaultKind, Site};
-use crate::art::tiles::Tile;
+use super::{Fault, FaultKind};
+use crate::art::maintenance::MaintenanceArt;
 use crate::shapes::Shapes;
-use crate::ship::layout::ship;
-use crate::ship::{WallCell, show_tile};
 use crate::tools::TapeLaid;
 use crate::{GameSet, not_paused, palette, running};
 
@@ -22,6 +18,9 @@ pub const BREACH_RADIUS: f32 = 26.0;
 /// Air rushing out of a breach (a child of the fault).
 #[derive(Component, Debug)]
 struct Vent;
+
+#[derive(Component, Debug)]
+struct BreachHole;
 
 pub struct BreachPlugin;
 
@@ -35,47 +34,36 @@ impl Plugin for BreachPlugin {
                 .run_if(running),
         )
         .add_systems(
-            FixedUpdate,
-            patch_sealed
-                .after(super::resolve_faults)
-                .in_set(GameSet::Resolve)
-                .run_if(running),
-        )
-        .add_systems(
             Update,
             draw_breaches.in_set(GameSet::Present).run_if(not_paused),
         );
     }
 }
 
-/// Swaps the wall tile at a breach site.
-fn set_wall(walls: &mut Query<(&WallCell, &mut Sprite)>, site: Site, tile: fn(bool) -> Tile) {
-    let Some(cell) = site.wall_cell() else {
-        return;
-    };
-    for (wall, mut sprite) in walls.iter_mut() {
-        if wall.0 == cell {
-            show_tile(&mut sprite, tile(ship().across_x(cell)));
-        }
-    }
-}
-
+/// Draw the tear and its vent on the same surface as applied tape.
 fn open_breaches(
     mut commands: Commands,
     shapes: Res<Shapes>,
     new_faults: Query<(Entity, &Fault), Added<Fault>>,
-    mut walls: Query<(&WallCell, &mut Sprite)>,
+    art: Res<MaintenanceArt>,
 ) {
     for (entity, fault) in &new_faults {
         if fault.kind() != FaultKind::HullBreach {
             continue;
         }
-        set_wall(&mut walls, fault.site, Tile::breach);
+        let offset = crate::ship::depth::wall_art_point(fault.site.pos(), fault.site.normal())
+            - fault.site.pos();
         commands.entity(entity).with_children(|parent| {
+            parent.spawn((
+                BreachHole,
+                art.sprite("breach", 0, Vec2::new(40.0, 32.0)),
+                Transform::from_translation(offset.extend(4.8))
+                    .with_rotation(Quat::from_rotation_z(fault.site.normal().perp().to_angle())),
+            ));
             parent.spawn((
                 Vent,
                 shapes.ring(30.0, palette::BREACH_AIR),
-                Transform::from_xyz(0.0, 0.0, 1.65),
+                Transform::from_translation(offset.extend(4.9)),
             ));
         });
     }
@@ -92,15 +80,6 @@ fn seal_breaches(mut laid: MessageReader<TapeLaid>, mut faults: Query<&mut Fault
             .map(|(_, f)| f);
         if let Some(mut fault) = nearest {
             fault.repair = (fault.repair + tape.secs / SEAL_SECS).min(1.0);
-        }
-    }
-}
-
-/// A sealed breach becomes a strapped patch.
-fn patch_sealed(mut fixed: MessageReader<FaultFixed>, mut walls: Query<(&WallCell, &mut Sprite)>) {
-    for msg in fixed.read() {
-        if msg.site.kind() == FaultKind::HullBreach {
-            set_wall(&mut walls, msg.site, Tile::patched);
         }
     }
 }

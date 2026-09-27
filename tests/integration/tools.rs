@@ -79,9 +79,21 @@ fn a_click_turns_the_snapped_bolt_tight() {
 fn walking_off_cancels_the_turn() {
     let mut app = test_app_with(Scenario::Bolts);
     frame(&mut app);
+    let target = app.world().resource::<ToolState>().snap.unwrap();
     click(&mut app);
-    frame(&mut app);
+    run_frames(&mut app, secs(WRENCH_TURN_SECS / 2.0));
     assert!(app.world().resource::<ToolState>().turn.is_some());
+    assert!(
+        app.world()
+            .get::<Sprite>(target)
+            .unwrap()
+            .rect
+            .unwrap()
+            .min
+            .x
+            > 0.0,
+        "the exposed screw has started retracting"
+    );
     press(&mut app, KeyCode::KeyS);
     // Input read in Update reaches gameplay on the next frame.
     run_frames(&mut app, 2);
@@ -93,6 +105,17 @@ fn walking_off_cancels_the_turn() {
     release(&mut app, KeyCode::KeyS);
     run_frames(&mut app, secs(1.0));
     assert_eq!(loose_bolts(&mut app).len(), 3);
+    assert_eq!(
+        app.world()
+            .get::<Sprite>(target)
+            .unwrap()
+            .rect
+            .unwrap()
+            .min
+            .x,
+        0.0,
+        "a cancelled turn restores the exposed screw"
+    );
 }
 
 #[test]
@@ -148,6 +171,18 @@ fn holding_tape_on_a_breach_seals_it_in_about_three_seconds() {
     assert!((2.9..=3.3).contains(&seconds), "took {seconds}s");
     assert_eq!(app.world().resource::<RunStats>().fixed, 1);
     assert!((TAPE_CAPACITY - tape_left(&app) - 3.0).abs() < 0.1);
+    run_frames(&mut app, secs(0.5));
+    let mut strips = app.world_mut().query_filtered::<&Sprite, With<TapeStrip>>();
+    assert!(
+        strips.iter(app.world()).count() > 5,
+        "the finished patch persists"
+    );
+    assert!(
+        strips
+            .iter(app.world())
+            .all(|s| s.rect.unwrap().min.x == 160.0),
+        "each strip reaches its fully applied frame"
+    );
 }
 
 #[test]

@@ -169,7 +169,8 @@ pub fn aim_at(app: &mut App, p: Vec2) {
     let mut rigs = app.world_mut().query::<&CameraRig>();
     let anchor = rigs.single(app.world()).unwrap().anchor;
     let offset = p - anchor;
-    let cursor = Vec2::new(640.0 + offset.x, 360.0 - offset.y);
+    let scale = leave_it_behind::WINDOW_SIZE.y as f32 / leave_it_behind::ship::layout::VIEW.y;
+    let cursor = Vec2::new(640.0 + offset.x * scale, 360.0 - offset.y * scale);
     let mut windows = app
         .world_mut()
         .query_filtered::<&mut Window, With<PrimaryWindow>>();

@@ -6,9 +6,10 @@ use bevy::prelude::*;
 
 use super::sites::BOLT_SITES;
 use super::{Fault, FaultKind, Site};
-use crate::shapes::{Shapes, at};
-use crate::ship::{BaseColor, EngineBlock};
-use crate::tools::{WrenchTarget, WrenchTightened};
+use crate::art::maintenance::MaintenanceArt as Art;
+use crate::shapes::at;
+use crate::ship::EngineBlock;
+use crate::tools::{ToolState, WRENCH_TURN_SECS, WrenchTarget, WrenchTightened};
 use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
 
 pub const BOLTS_PER_PANEL: usize = 3;
@@ -46,7 +47,7 @@ impl Plugin for BoltsPlugin {
     }
 }
 
-fn spawn_bolts(mut commands: Commands, shapes: Res<Shapes>) {
+fn spawn_bolts(mut commands: Commands, art: Res<Art>) {
     for panel in BOLT_SITES {
         for pos in panel.bolts().into_iter().flatten() {
             commands.spawn((
@@ -55,7 +56,7 @@ fn spawn_bolts(mut commands: Commands, shapes: Res<Shapes>) {
                     pos,
                     loose: false,
                 },
-                shapes.circle(7.0, palette::BOLT_TIGHT),
+                art.sprite("bolt", 8, Vec2::splat(32.0)),
                 at(pos, 1.4),
             ));
         }
@@ -115,19 +116,39 @@ fn tighten_bolts(
 }
 
 /// Loose bolts stick out of the face and rattle; tight ones sit flush.
-fn draw_bolts(time: Res<Time>, mut bolts: Query<(&Bolt, &mut Transform, &mut Sprite)>) {
+fn draw_bolts(
+    time: Res<Time>,
+    art: Res<Art>,
+    state: Res<ToolState>,
+    mut bolts: Query<(Entity, &Bolt, &mut Transform, &mut Sprite)>,
+) {
     let t = time.elapsed_secs();
-    for (bolt, mut transform, mut sprite) in &mut bolts {
+    for (entity, bolt, mut transform, mut sprite) in &mut bolts {
         let n = bolt.panel.normal();
-        let (offset, color, radius) = if bolt.loose {
-            let rattle = (t * 21.0 + bolt.pos.x * 0.07).sin() * 2.5;
-            (n * 4.0 + n.perp() * rattle, palette::BOLT_LOOSE, 9.0)
+        let turn = state.turn.filter(|turn| turn.target == entity);
+        let progress = turn.map_or(0.0, |turn| 1.0 - turn.left / WRENCH_TURN_SECS);
+        art.frame(&mut sprite, "bolt", bolt_frame(bolt.loose, progress));
+        let rattle = if bolt.loose && turn.is_none() {
+            (t * 21.0 + bolt.pos.x * 0.07).sin().round()
         } else {
-            (-n * 8.0, palette::BOLT_TIGHT, 7.0)
+            0.0
         };
-        transform.translation = (bolt.pos + offset).extend(1.4);
-        sprite.color = color;
-        sprite.custom_size = Some(Vec2::splat(radius * 2.0));
+        // Socket stays inside the engine; exposed threads extend towards the player.
+        transform.translation = (bolt.pos - n * 2.0 + n.perp() * rattle).extend(3.7);
+        transform.rotation = Quat::from_rotation_z(n.to_angle() - std::f32::consts::FRAC_PI_2);
+        sprite.color = if bolt.loose {
+            Color::WHITE.mix(&palette::BOLT_LOOSE, 0.35)
+        } else {
+            Color::WHITE
+        };
+    }
+}
+
+pub fn bolt_frame(loose: bool, progress: f32) -> usize {
+    if loose {
+        (progress.clamp(0.0, 1.0) * 8.0).floor() as usize
+    } else {
+        8
     }
 }
 
@@ -141,16 +162,29 @@ pub fn engine_of(site: Site) -> Option<EngineBlock> {
 
 /// Engine heat: the in-room cue that this engine has a bolt fault.
 fn heat_engines(
+    art: Res<Art>,
+    time: Res<Time>,
     faults: Query<&Fault>,
-    mut engines: Query<(&EngineBlock, &BaseColor, &mut Sprite)>,
+    mut engines: Query<(&EngineBlock, &mut Sprite)>,
 ) {
-    for (engine, base, mut sprite) in &mut engines {
+    for (engine, mut sprite) in &mut engines {
         let heat = faults
             .iter()
             .filter(|f| engine_of(f.site) == Some(*engine))
             .map(|f| f.urgency())
             .fold(0.0, f32::max);
-        sprite.color = base.0.mix(&palette::ENGINE_HOT, heat);
+        art.frame(
+            &mut sprite,
+            if crate::ship::layout::port_engine().height()
+                > crate::ship::layout::port_engine().width()
+            {
+                "engine-vertical"
+            } else {
+                "engine"
+            },
+            (time.elapsed_secs() * (5.0 + heat * 6.0)) as usize % 4,
+        );
+        sprite.color = Color::WHITE.mix(&palette::ENGINE_HOT, heat * 0.65);
     }
 }
 

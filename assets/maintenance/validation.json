@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "assets": 14,
+  "frames": 319,
+  "pixels": 2049240,
+  "checks": [
+    "indexed PNG",
+    "dimensions",
+    "shared engineer palette",
+    "binary alpha",
+    "sheet/frame equality",
+    "editable sources"
+  ]
+}

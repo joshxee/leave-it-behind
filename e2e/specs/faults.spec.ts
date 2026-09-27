@@ -6,7 +6,7 @@ test('wrench: click each loose bolt to fix the engine', async ({ page }, testInf
   try {
     await openGame(page, { scenario: 'bolts' });
     const start = await waitForState(page, (s) => s.looseBolts.length === 3 && s.snap);
-    await attachShot(page, testInfo, 'bolts-loose: left engine with three orange bolts on its spine side, engineer beside the lowest one with the wrench jaw on it inside a cyan ring');
+    await attachShot(page, testInfo, 'bolts-loose: left engine with three exposed threaded bolts on its spine side, engineer beside the lowest one with the wrench jaw on it inside a cyan ring');
     // The panel runs along the engine's side: walk along it from bolt to bolt.
     const first = start.looseBolts[0];
     const last = start.looseBolts[start.looseBolts.length - 1];
@@ -31,13 +31,17 @@ test('wrench: click each loose bolt to fix the engine', async ({ page }, testInf
       const aimed = await waitForState(page, (t) => t.snap);
       const at = toScreen(aimed, bolt);
       await page.mouse.click(at.x, at.y);
+      if (i === 0) {
+        await waitForState(page, (t) => t.turning);
+        await attachShot(page, testInfo, "bolt-turning: exposed threaded shaft retracting as the hex head turns into its socket");
+      }
       await waitForState(page, (t, n) => t.looseBolts.length === n, bolts.length - i - 1);
     }
     const done = await waitForState(page, (s) => s.faults.length === 0);
     expect(done.stats.fixed).toBe(1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'bolts-fixed: all engine bolts grey and flush, engine block dark blue-grey (not glowing)');
+    await attachShot(page, testInfo, 'bolts-fixed: all threaded bolts seated flush against the detailed blue-steel engine assembly');
   }
 });
 
@@ -60,7 +64,7 @@ test('tape: hold the button on the breach to seal it', async ({ page }, testInfo
     expect(done.entities.tapeStrips).toBeGreaterThan(5);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'breach-sealed: the hole replaced by a strapped grey patch plate, grey tape strips on the wall, no air ring');
+    await attachShot(page, testInfo, 'breach-sealed: the hole replaced by a woven silver tape patch, layered torn-edge strips on the wall, no air ring');
   }
 });
 
@@ -69,7 +73,7 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
   try {
     await openGame(page, { scenario: 'drift' });
     await waitForState(page, (s) => s.focus === 'Helm' && !s.nav.inBand);
-    await attachShot(page, testInfo, 'drift: cockpit, engineer at the pilot seat, nav display below with its marker off-centre (amber near the centre square, red further out), display frame blinking red');
+    await attachShot(page, testInfo, 'drift: cockpit, engineer at the pilot seat, nav display below with a ship cursor off-centre on a sweeping radar (amber near the centre square, red further out), display frame blinking red');
     await page.keyboard.press('e');
     await waitForState(page, (s) => s.nav.engaged && s.player.locked);
 
@@ -83,7 +87,7 @@ test('helm: E locks in, WASD steers the marker into the centre band', async ({ p
       if (Date.now() > deadline) throw new Error(`drift not fixed: ${JSON.stringify(s.nav)}`);
       if (!shotTaken && s.nav.inBand && s.faults[0].repair > 0.3) {
         shotTaken = true;
-        await attachShot(page, testInfo, 'steering: engineer seated facing the window, marker larger and pale cyan inside the lit centre square, hold bar growing along the display bottom');
+        await attachShot(page, testInfo, 'steering: engineer seated facing the window, ship cursor pale cyan inside the lit centre square, hold bar growing along the display bottom');
       }
       const want = new Set<string>();
       if (s.nav.x > 0.05) want.add('a');

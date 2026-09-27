@@ -2,6 +2,7 @@
 //! with the derelict-ship tiles, the room the player is in, and a camera
 //! that frames only that room.
 
+pub mod depth;
 pub mod doors;
 pub mod layout;
 pub mod map;
@@ -11,6 +12,7 @@ use bevy::prelude::*;
 
 pub use map::RoomId;
 
+use crate::art::maintenance::MaintenanceArt;
 use crate::art::tiles::Tile;
 use crate::art::{Art, TILE};
 use crate::player::Player;
@@ -48,7 +50,7 @@ pub struct CameraRig {
     pub shake: Vec2,
 }
 
-/// An engine block (a placeholder until there is engine art). Tinted by the
+/// An engine assembly. Tinted by the
 /// loose-bolts fault as the engine heats up.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineBlock {
@@ -56,11 +58,7 @@ pub enum EngineBlock {
     Starboard,
 }
 
-/// The colour a tinted placeholder returns to when nothing is wrong.
-#[derive(Component, Debug, Clone, Copy)]
-pub struct BaseColor(pub Color);
-
-/// The sprite of a wall cell, so a fault can swap its tile (a breach).
+/// The sprite of a wall cell, projected by the depth renderer.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WallCell(pub IVec2);
 
@@ -86,7 +84,9 @@ pub fn show_tile(sprite: &mut Sprite, tile: Tile) {
 
 /// What the camera shows of a room (everything else is curtained off).
 pub fn room_frame(room: RoomId) -> Rect {
-    ship().frame(room)
+    let mut frame = ship().frame(room).inflate(12.0);
+    frame.max.y += 22.0;
+    frame
 }
 
 pub struct ShipPlugin;
@@ -97,12 +97,9 @@ impl Plugin for ShipPlugin {
             .insert_resource(Colliders(layout::colliders()))
             .insert_resource(Walls(layout::walls()))
             .insert_resource(ClearColor(palette::VOID))
-            .add_plugins(doors::DoorsPlugin)
+            .add_plugins((doors::DoorsPlugin, depth::DepthPlugin))
             .add_systems(Startup, (spawn_camera, spawn_ship).in_set(GameSet::Input))
-            .add_systems(
-                OnEnter(AppState::Playing),
-                (reset_room, reset_walls).in_set(RunSet::Spawn),
-            )
+            .add_systems(OnEnter(AppState::Playing), reset_room.in_set(RunSet::Spawn))
             .add_systems(FixedUpdate, track_room.in_set(GameSet::Act).run_if(running))
             .add_systems(
                 Update,
@@ -137,7 +134,7 @@ fn spawn_camera(mut commands: Commands) {
 /// under hull walls), walls, the cockpit module and props. Doors are
 /// `doors.rs`'s; the diagnostic console and the nav display belong to
 /// their features.
-fn spawn_ship(mut commands: Commands, art: Res<Art>) {
+fn spawn_ship(mut commands: Commands, art: Res<Art>, maintenance: Res<MaintenanceArt>) {
     let map = ship();
     let half = TILE / 2.0;
     for (cell, c) in map.cells() {
@@ -160,8 +157,23 @@ fn spawn_ship(mut commands: Commands, art: Res<Art>) {
                 for (i, _) in quadrants.iter().enumerate().filter(|(_, inside)| **inside) {
                     let (x, y) = ((i % 2) as f32 * half, (i / 2) as f32 * half);
                     commands.spawn((
-                        art.tile_part(floor, Rect::new(x, y, x + half, y + half)),
-                        at(center + Vec2::new(x - half / 2.0, half / 2.0 - y), z::FLOOR),
+                        art.tile_part(
+                            floor,
+                            Rect::new(
+                                if x == 0.0 { 0.0 } else { 14.0 },
+                                if y == 0.0 { 0.0 } else { 14.0 },
+                                if x == 0.0 { 50.0 } else { 64.0 },
+                                if y == 0.0 { 50.0 } else { 64.0 },
+                            ),
+                        ),
+                        at(
+                            center
+                                + Vec2::new(
+                                    if x == 0.0 { -7.0 } else { 7.0 },
+                                    if y == 0.0 { 7.0 } else { -7.0 },
+                                ),
+                            z::FLOOR,
+                        ),
                     ));
                 }
             }
@@ -169,13 +181,18 @@ fn spawn_ship(mut commands: Commands, art: Res<Art>) {
         let prop = |tile: Tile| (art.tile(tile), at(center, z::PROP));
         match c {
             '#' | '1'..='9' => {
-                if let Some(tile) = map.structure_tile(cell) {
-                    commands.spawn((WallCell(cell), art.tile(tile), at(center, z::STRUCTURE)));
-                }
+                commands.spawn((
+                    WallCell(cell),
+                    maintenance.sprite("wall-depth", 0, Vec2::new(64.0, 88.0)),
+                    at(center + Vec2::Y * 12.0, z::STRUCTURE),
+                ));
             }
             'V' => {
                 if let Some(tile) = map.structure_tile(cell) {
-                    commands.spawn((art.tile(tile), at(center, z::STRUCTURE)));
+                    commands.spawn((
+                        art.tile(tile),
+                        at(center + Vec2::Y * depth::WALL_HEIGHT, z::STRUCTURE),
+                    ));
                 }
             }
             'v' => {
@@ -203,7 +220,7 @@ fn spawn_ship(mut commands: Commands, art: Res<Art>) {
         (EngineBlock::Port, layout::port_engine()),
         (EngineBlock::Starboard, layout::starboard_engine()),
     ] {
-        spawn_engine(&mut commands, engine, block);
+        spawn_engine(&mut commands, &maintenance, engine, block);
     }
     let bunk = layout::bunk();
     commands.spawn((
@@ -225,52 +242,27 @@ fn spawn_ship(mut commands: Commands, art: Res<Art>) {
     }
 }
 
-/// A placeholder engine: a block with a panel and vents across its length.
-fn spawn_engine(commands: &mut Commands, engine: EngineBlock, block: Rect) {
-    let inset = block.inflate(-4.0);
+/// Choose an assembly matching the map's engine footprint and orientation.
+fn spawn_engine(commands: &mut Commands, art: &MaintenanceArt, engine: EngineBlock, block: Rect) {
+    let vertical = block.height() > block.width();
+    let (name, size, offset) = if vertical {
+        ("engine-vertical", block.size() + Vec2::Y * 16.0, 8.0)
+    } else {
+        (
+            "engine",
+            block.size() * Vec2::new(224.0 / 200.0, 88.0 / 56.0),
+            18.0,
+        )
+    };
     commands.spawn((
         engine,
-        BaseColor(palette::ENGINE),
-        rect(inset.size(), palette::ENGINE),
-        at(block.center(), z::PROP),
+        art.sprite(name, 0, size),
+        at(block.center() + Vec2::Y * offset, z::PROP),
     ));
-    let panel = inset.inflate(-10.0);
-    commands.spawn((
-        engine,
-        BaseColor(palette::ENGINE_PANEL),
-        rect(panel.size(), palette::ENGINE_PANEL),
-        at(block.center(), z::PROP + 0.01),
-    ));
-    let long_x = block.width() > block.height();
-    let count = 6;
-    for i in 0..count {
-        let t = (i as f32 + 0.5) / count as f32 - 0.5;
-        let (pos, size) = if long_x {
-            (
-                block.center() + Vec2::new(t * panel.width(), 0.0),
-                Vec2::new(4.0, panel.height() - 16.0),
-            )
-        } else {
-            (
-                block.center() + Vec2::new(0.0, t * panel.height()),
-                Vec2::new(panel.width() - 16.0, 4.0),
-            )
-        };
-        commands.spawn((rect(size, palette::ENGINE_VENT), at(pos, z::PROP + 0.02)));
-    }
 }
 
 fn reset_room(mut room: ResMut<CurrentRoom>) {
     room.0 = RoomId::at(layout::player_spawn());
-}
-
-/// Every wall intact again at the start of a run (breaches swap tiles).
-fn reset_walls(mut walls: Query<(&WallCell, &mut Sprite)>) {
-    for (cell, mut sprite) in &mut walls {
-        if let Some(tile) = ship().structure_tile(cell.0) {
-            show_tile(&mut sprite, tile);
-        }
-    }
 }
 
 fn track_room(players: Query<&Transform, With<Player>>, mut room: ResMut<CurrentRoom>) {
@@ -322,7 +314,7 @@ mod tests {
     fn cursor_at_center_is_the_anchor() {
         let anchor = Vec2::new(100.0, -5.0);
         assert_eq!(
-            cursor_to_world(Vec2::new(640.0, 360.0), layout::VIEW, anchor),
+            cursor_to_world(layout::VIEW / 2.0, layout::VIEW, anchor),
             anchor
         );
     }
@@ -330,21 +322,21 @@ mod tests {
     #[test]
     fn cursor_top_left_is_up_and_left() {
         let w = cursor_to_world(Vec2::ZERO, layout::VIEW, Vec2::ZERO);
-        assert_eq!(w, Vec2::new(-640.0, 360.0));
+        assert_eq!(w, layout::VIEW * Vec2::new(-0.5, 0.5));
     }
 
     #[test]
     fn small_window_still_shows_the_reference_view() {
         // Half-size window: each pixel covers two world units.
         let w = cursor_to_world(Vec2::ZERO, layout::VIEW / 2.0, Vec2::ZERO);
-        assert_eq!(w, Vec2::new(-640.0, 360.0));
+        assert_eq!(w, layout::VIEW * Vec2::new(-0.5, 0.5));
     }
 
     #[test]
     fn wide_window_keeps_the_full_height() {
         let window = Vec2::new(2560.0, 720.0);
         let w = cursor_to_world(Vec2::new(1280.0, 0.0), window, Vec2::ZERO);
-        assert_eq!(w, Vec2::new(0.0, 360.0));
+        assert_eq!(w, Vec2::new(0.0, layout::VIEW.y / 2.0));
     }
 
     #[test]

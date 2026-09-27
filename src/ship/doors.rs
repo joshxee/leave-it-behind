@@ -9,6 +9,7 @@
 use bevy::prelude::*;
 
 use super::map::ship;
+use crate::art::maintenance::MaintenanceArt;
 use crate::art::tiles::{Tile, local_rect};
 use crate::art::{Art, TILE};
 use crate::player::Player;
@@ -28,6 +29,13 @@ pub const ASSIST_REACH: f32 = 1.5 * TILE;
 pub const ASSIST_WIDTH: f32 = 0.75 * TILE;
 /// ...moving them sideways toward it at up to this speed.
 pub const ASSIST_SPEED: f32 = 260.0;
+
+/// The visual follows the room's outboard wall; the doorway remains on the map.
+#[derive(Component)]
+pub struct DoorVisual {
+    pub center: Vec2,
+    pub across_x: bool,
+}
 
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub struct Door {
@@ -122,7 +130,7 @@ impl Plugin for DoorsPlugin {
     }
 }
 
-fn spawn_doors(mut commands: Commands, art: Res<Art>) {
+fn spawn_doors(mut commands: Commands, art: Res<Art>, maintenance: Res<MaintenanceArt>) {
     for spec in ship().doors() {
         let tile = if spec.locked {
             Tile::locked_door(spec.across_x)
@@ -131,7 +139,19 @@ fn spawn_doors(mut commands: Commands, art: Res<Art>) {
         };
         let mut door = commands.spawn((
             Name::new("Door"),
-            art.tile(tile),
+            DoorVisual {
+                center: spec.center,
+                across_x: spec.across_x,
+            },
+            if spec.across_x {
+                maintenance.sprite(
+                    "door-depth",
+                    if spec.locked { 4 } else { 0 },
+                    Vec2::new(64.0, 88.0),
+                )
+            } else {
+                art.tile(tile)
+            },
             at(spec.center, super::z::STRUCTURE),
         ));
         if !spec.locked {
@@ -164,8 +184,12 @@ fn operate_doors(
     }
 }
 
-fn draw_doors(mut doors: Query<(&Door, &mut Sprite)>) {
+fn draw_doors(art: Res<MaintenanceArt>, mut doors: Query<(&Door, &mut Sprite)>) {
     for (door, mut sprite) in &mut doors {
+        if door.across_x {
+            art.frame(&mut sprite, "door-depth", door.frame);
+            continue;
+        }
         let index = Tile::door(door.across_x, door.frame).index();
         if let Some(atlas) = sprite.texture_atlas.as_mut()
             && atlas.index != index

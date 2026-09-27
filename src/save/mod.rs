@@ -127,7 +127,8 @@ pub fn data_dir(os: &str, env: impl Fn(&str) -> Option<String>) -> Option<PathBu
         "windows" => var("APPDATA")?,
         "macos" => var("HOME")?.join("Library").join("Application Support"),
         _ => var("XDG_DATA_HOME")
-            .filter(|p| p.is_absolute())
+            // XDG uses Unix paths, including when testing this branch on Windows.
+            .filter(|p| p.to_string_lossy().starts_with('/'))
             .or_else(|| Some(var("HOME")?.join(".local").join("share")))?,
     };
     Some(base.join(GAME_DIR))

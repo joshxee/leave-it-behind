@@ -167,7 +167,8 @@ export async function waitForState<A = undefined>(
 
 /** Page pixel under world point (x, y): the canvas is 1280×720 at the page origin. */
 export function toScreen(s: BevyState, p: { x: number; y: number }) {
-  return { x: 640 + (p.x - s.camera.x), y: 360 - (p.y - s.camera.y) };
+  // The world view includes room for the raised walls above and below the floor.
+  return { x: 640 + (p.x - s.camera.x) / 1.1, y: 360 - (p.y - s.camera.y) / 1.1 };
 }
 
 /** Moves the mouse over world point `p`. */
