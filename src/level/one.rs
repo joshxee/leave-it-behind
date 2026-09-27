@@ -6,6 +6,10 @@
 //! Tuning (2:30 flight, about 20 s to reach and fix a fault):
 //! - 0:10 loose bolts, 0:34 a breach in the same engine room, 0:58 drift.
 //! - 1:24-1:30 one more of any kind, anywhere.
+//!
+//! Breach and bolt clocks are drains on the ship's oxygen and engine heat
+//! (`faults::vitals`): each alone plays exactly as its clock, but one left
+//! long drains the pool for the next of its kind.
 
 use super::def::{Envelope, FaultSlot, LevelDef, TimeWindow};
 use crate::faults::{FaultKind, Site};

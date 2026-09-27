@@ -146,7 +146,7 @@ pub fn level_four() -> LevelDef {
             // All three at once.
             slot(136.0, 140.0, &[Bolts], (55.0, 65.0)),
             slot(140.0, 144.0, &[Drift], (55.0, 65.0)),
-            slot(144.0, 148.0, &[Breach, Bolts], (55.0, 62.0)),
+            slot(144.0, 148.0, &[Breach], (55.0, 62.0)),
             slot(172.0, 176.0, &[Bolts, Drift], (55.0, 60.0)),
         ],
     )

@@ -13,6 +13,8 @@ The ship as data, drawn with the derelict-ship tiles, and the camera that frames
 
 `doors.rs`: a door slides open (four frames, 0.1 s each) when the engineer is within `DOOR_REACH` (3 cells, so a running engineer never waits) and closes behind them. Only frame 3 is passable: until then the leaf (`Door::leaf`, the 36-unit gap between the jambs) is solid, which is why the player's footprint is 28 units wide. `door_assist` steers an engineer heading into a door toward its centre line. The hatch is a locked door: part of the wall.
 
+The first opening frame emits `DoorCue::Opening`; the final closing frame emits `DoorCue::Closed`. `sound` plays the quiet door motor and clang from those cues. Resetting doors for a new run emits no sound.
+
 ## Drawing
 
 The maintenance pack supplies full-height wall faces and narrow caps pushed to the outer edge of each room. `depth.rs` selects one of 16 joining masks × 16 room-facing variants, sorts the engineer and engines by ground contact, and places door art on the same border. All foreground walls retain the same 22-unit height. The map collision cores remain a walking guard band. Floor art extends beneath the narrower caps; curtains include the raised silhouette. Breaches and tape use `wall_art_point` so holes, strips and the tape feed meet on the same surface.

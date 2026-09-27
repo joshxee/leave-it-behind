@@ -109,10 +109,10 @@ fn losing_flies_the_same_level_again_with_the_same_upgrades() {
     key(&mut app, KeyCode::Digit1);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
-    // A breach about to vent the last of the air.
+    // A drift about to hit a rock (drift keeps its own clock).
     let fault = app
         .world_mut()
-        .spawn(fault_bundle(Site::CockpitPort, 55.0))
+        .spawn(fault_bundle(Site::Helm, 55.0))
         .id();
     app.world_mut().get_mut::<Fault>(fault).unwrap().elapsed = 54.9;
     run_until(&mut app, secs(1.0), |app| state(app) == AppState::Lost);

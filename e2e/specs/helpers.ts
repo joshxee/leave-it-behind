@@ -97,6 +97,11 @@ export type BevyState = {
   diag: 'Closed' | 'Scanning' | 'Open';
   diagUses: number;
   alarm: { level: number; active: number; jolt: number };
+  /**
+   * Oxygen left (1 full, 0 depleted), engine heat (0 cool, 1 overheated), and
+   * what the HUD's vitals panel says: O2, HEAT, then the course.
+   */
+  vitals: { oxygen: number; heat: number; gauges: { label: string; value: string; alert: boolean }[] };
   stats: { started: number; fixed: number; failure: FaultState['kind'] | null; damage: Damage };
   entities: { players: number; faults: number; tapeStrips: number };
 };

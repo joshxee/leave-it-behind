@@ -16,3 +16,4 @@ mod scenarios;
 mod state;
 mod tools;
 mod upgrades;
+mod vitals;

@@ -1,0 +1,18 @@
+Sound sources used by Leave It Behind
+
+"Car Wrench Sound Effect.wav" by Monster_1999_Kyle
+https://freesound.org/people/Monster_1999_Kyle/sounds/653305/
+License: Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0).
+The game uses a short excerpt. Credit is required; commercial use is restricted.
+
+"Duct Tape_Long_1.wav" by NinjaSharkStudios
+https://freesound.org/s/565269/
+License: not verified from the supplied file. Check the source before release.
+
+"Derelict Spaceship Engine - Rustbound Reactor 02 (Loop)" by TommasoMotteran
+https://freesound.org/people/TommasoMotteran/sounds/851916/
+License: Creative Commons Zero (CC0).
+
+"Hull breach.ogg" by jobro
+https://freesound.org/s/244112/
+License: not verified from the supplied file. Check the source before release.
