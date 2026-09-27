@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use crate::art::engineer::{contact, facing};
 use crate::coach::{Tip, TipsSeen};
 use crate::faults::{Site, Vitals, fault_bundle};
-use crate::level::{CurrentLevel, FaultPlan, Journey, campaign::level};
+use crate::level::{CurrentLevel, FaultPlan, RunStats, campaign::level};
 use crate::menu::{Menu, Screen};
 use crate::player::{Facing, Player};
 use crate::settings::Settings;
@@ -45,7 +45,8 @@ pub enum Scenario {
     Diagnostics,
     /// All three kinds at once; the engineer is in the quarters.
     Scramble,
-    /// Level one with three seconds to arrival and nothing broken.
+    /// Level one with every fault fixed: the final approach, landing three
+    /// seconds after launch.
     Landing,
     /// The `breach` scenario with two seconds of oxygen left.
     BreachCritical,
@@ -68,8 +69,8 @@ pub enum Scenario {
     /// The last level from launch, with an upgrade picked before each level
     /// (run faster, faster wrench, wider tape, run faster).
     LevelFive,
-    /// The `level_five` scenario three seconds from arrival, nothing broken:
-    /// landing ends the campaign.
+    /// The `level_five` scenario with every fault fixed, three seconds from
+    /// touchdown: landing ends the campaign.
     FinalLanding,
 }
 
@@ -239,10 +240,13 @@ fn scramble(world: &mut World) {
     start(world, Site::Helm, 50.0);
 }
 
+/// Every planned fault counted as started and fixed, so the flight is
+/// cleared on its first tick and lands after the final approach.
 fn landing(world: &mut World) {
-    quiet(world);
-    let mut journey = world.resource_mut::<Journey>();
-    journey.elapsed = journey.duration - 3.0;
+    let planned = std::mem::take(&mut world.resource_mut::<FaultPlan>().pending).len() as u32;
+    let mut stats = world.resource_mut::<RunStats>();
+    stats.started = planned;
+    stats.fixed = planned;
 }
 
 fn breach_critical(world: &mut World) {
@@ -287,12 +291,11 @@ fn first_bolts(world: &mut World) {
 }
 
 /// Flies campaign level `number` instead of the one the run started with:
-/// its fault plan and countdown replace the ones already rolled.
+/// its fault plan replaces the one already rolled.
 fn fly_level(world: &mut World, number: usize) {
     let def = level(number).expect("a campaign level");
     let plan = world.resource_scope(|_, mut rng: Mut<crate::GameRng>| def.roll(&mut rng));
     world.resource_mut::<FaultPlan>().pending = plan;
-    *world.resource_mut::<Journey>() = Journey::new(def.duration_secs);
     world.insert_resource(CurrentLevel(def));
 }
 

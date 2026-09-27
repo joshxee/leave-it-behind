@@ -83,8 +83,11 @@ export type BevyState = {
   /** Where tape goes on this tick: the wall point and its face's normal (out of the wall), or null. */
   tapeContact: { x: number; y: number; nx: number; ny: number } | null;
   strips: number;
-  /** `launched` is false while level one's pre-flight check holds the countdown. */
-  journey: { elapsed: number; remaining: number; duration: number; launched: boolean };
+  /**
+   * `launched` is false while level one's pre-flight check holds the fault schedule.
+   * `cleared` once every fault is fixed: the ship lands 3 s later.
+   */
+  journey: { elapsed: number; launched: boolean; cleared: boolean };
   /** The coaching panel's lines, top to bottom (empty when hidden). */
   coach: { active: boolean; lines: string[] };
   /** Where the diagnostic console is worked from (its front edge). */
@@ -102,7 +105,8 @@ export type BevyState = {
    * what the HUD's vitals panel says: O2, HEAT, then the course.
    */
   vitals: { oxygen: number; heat: number; gauges: { label: string; value: string; alert: boolean }[] };
-  stats: { started: number; fixed: number; failure: FaultState['kind'] | null; damage: Damage };
+  /** `total`: faults the flight must fix to land (started and still to come). */
+  stats: { started: number; fixed: number; total: number; failure: FaultState['kind'] | null; damage: Damage };
   entities: { players: number; faults: number; tapeStrips: number };
 };
 

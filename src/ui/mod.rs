@@ -1,4 +1,5 @@
-//! HUD: the countdown to arrival (top), the current room (top left), the
+//! HUD: the repairs count (top: faults fixed of the flight's total; a flight
+//! lands once they all are), the current room (top left), the
 //! level (under the room), the ship's vitals (top right: oxygen, engine
 //! heat, time to impact), the
 //! tool belt and a context prompt (bottom), and a controls hint at launch.
@@ -17,7 +18,7 @@ use bevy::prelude::*;
 
 use crate::diagnostics::{DiagView, Diagnostics};
 use crate::faults::drift::Nav;
-use crate::level::{CurrentLevel, Journey, LEVEL_COUNT, format_clock};
+use crate::level::{CurrentLevel, FaultPlan, Journey, LEVEL_COUNT, RunStats};
 use crate::player::{Focus, InteractKind};
 use crate::settings::Settings;
 use crate::ship::CurrentRoom;
@@ -37,7 +38,7 @@ pub const NOTICE_SECS: f32 = 4.0;
 const NOTICE_Z: i32 = 60;
 
 #[derive(Component, Debug)]
-pub struct TimerText;
+pub struct RepairsText;
 
 #[derive(Component, Debug)]
 pub struct RoomText;
@@ -138,8 +139,24 @@ pub fn level_label(number: usize, name: &str) -> String {
     }
 }
 
-pub fn timer_label(remaining: f32) -> String {
-    format!("ARRIVAL IN {}", format_clock(remaining))
+/// "REPAIRS 3 OF 7": faults fixed of the flight's total. Empty for a flight
+/// with nothing planned (the quiet scenarios).
+pub fn repairs_label(fixed: u32, total: u32) -> String {
+    if total == 0 {
+        String::new()
+    } else {
+        format!("REPAIRS {} OF {total}", fixed.min(total))
+    }
+}
+
+/// What the top of the HUD says: the repairs count, then the final
+/// approach once every fault is fixed, then the landing.
+pub fn status_label(state: &AppState, journey: &Journey, fixed: u32, total: u32) -> String {
+    match state {
+        AppState::Landed => "LANDED".into(),
+        _ if journey.cleared() => "ALL FIXED - LANDING".into(),
+        _ => repairs_label(fixed, total),
+    }
 }
 
 pub fn belt_label(tool: Tool, tape_left: f32) -> String {
@@ -192,8 +209,8 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         },
         GlobalZIndex(10),
         children![(
-            TimerText,
-            Text::new(timer_label(0.0)),
+            RepairsText,
+            Text::new(""),
             font(34.0),
             TextColor(palette::UI_TEXT)
         )],
@@ -354,26 +371,25 @@ fn show_notices(
 
 fn update_hud(
     journey: Res<Journey>,
+    plan: Res<FaultPlan>,
+    stats: Res<RunStats>,
     level: Res<CurrentLevel>,
     room: Res<CurrentRoom>,
     belt: Res<ToolBelt>,
     settings: Res<Settings>,
     state: Res<State<AppState>>,
     mut texts: ParamSet<(
-        Query<&mut Text, With<TimerText>>,
+        Query<&mut Text, With<RepairsText>>,
         Query<&mut Text, With<RoomText>>,
         Query<(&mut Text, &mut TextColor, &BeltSlot)>,
         Query<&mut Text, With<LevelText>>,
     )>,
     mut hints: Query<&mut Visibility, With<HintText>>,
 ) {
-    let timer = match state.get() {
-        AppState::Landed => "LANDED".to_string(),
-        _ => timer_label(journey.remaining()),
-    };
+    let status = status_label(state.get(), &journey, stats.fixed, plan.total(&stats));
     for mut t in &mut texts.p0() {
-        if t.0 != timer {
-            t.0 = timer.clone();
+        if t.0 != status {
+            t.0 = status.clone();
         }
     }
     let room_name = room.0.name().to_uppercase();
@@ -510,7 +526,22 @@ mod tests {
 
     #[test]
     fn labels() {
-        assert_eq!(timer_label(125.5), "ARRIVAL IN 2:06");
+        assert_eq!(repairs_label(3, 7), "REPAIRS 3 OF 7");
+        assert_eq!(repairs_label(0, 0), "");
+        let flying = Journey::default();
+        let cleared = Journey {
+            cleared_at: Some(80.0),
+            ..flying
+        };
+        assert_eq!(
+            status_label(&AppState::Playing, &flying, 2, 4),
+            "REPAIRS 2 OF 4"
+        );
+        assert_eq!(
+            status_label(&AppState::Playing, &cleared, 4, 4),
+            "ALL FIXED - LANDING"
+        );
+        assert_eq!(status_label(&AppState::Landed, &cleared, 4, 4), "LANDED");
         assert_eq!(level_label(2, "Level 2"), "LEVEL 2 OF 5");
         assert_eq!(level_label(0, "Test flight"), "TEST FLIGHT");
         assert_eq!(belt_label(Tool::Tape, 19.2), "[2] TAPE 20s");

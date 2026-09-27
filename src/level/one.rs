@@ -3,7 +3,7 @@
 //! can tip each), and a fourth of a random kind comes last, so one fix is
 //! done twice. Nothing ever overlaps.
 //!
-//! Tuning (2:30 flight, about 20 s to reach and fix a fault):
+//! Tuning (about 20 s to reach and fix a fault, landed within two minutes):
 //! - 0:10 loose bolts, 0:34 a breach in the same engine room, 0:58 drift.
 //! - 1:24-1:30 one more of any kind, anywhere.
 //!
@@ -23,7 +23,6 @@ pub fn level_one() -> LevelDef {
     LevelDef {
         id: "one".into(),
         name: "Level 1".into(),
-        duration_secs: 150.0,
         // Unseeded: the last fault's kind and site differ from run to run.
         seed: None,
         envelope: Envelope {
@@ -50,10 +49,10 @@ mod tests {
     use crate::GameRng;
 
     #[test]
-    fn level_one_is_two_and_a_half_minutes() {
+    fn level_one_is_over_within_two_minutes() {
         let level = level_one();
         assert_eq!(level.validate(), Ok(()));
-        assert_eq!(level.duration_secs, 150.0);
+        assert_eq!(level.worst_case_secs(), 110.0);
         assert!(level.coaching);
     }
 
