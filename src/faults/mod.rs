@@ -87,7 +87,7 @@ impl FaultKind {
 }
 
 /// Shortest and longest failure clock any fault may have, in seconds.
-pub const CLOCK_LIMITS: (f32, f32) = (55.0, 75.0);
+pub const CLOCK_LIMITS: (f32, f32) = (55.0, 90.0);
 
 /// An active fault.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]

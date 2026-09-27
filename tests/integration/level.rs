@@ -82,9 +82,9 @@ fn reaching_zero_lands_the_ship() {
 fn ignoring_every_fault_loses_to_the_first() {
     let mut app = test_app();
     boot(&mut app);
-    run_until(&mut app, secs(85.0), |app| state(app) == AppState::Lost);
-    // Loose bolts at 0:10 with a 67 s clock.
-    assert!((elapsed(&app) - 77.0).abs() < 0.1, "{}", elapsed(&app));
+    run_until(&mut app, secs(95.0), |app| state(app) == AppState::Lost);
+    // Loose bolts at 0:10 with an 80 s clock.
+    assert!((elapsed(&app) - 90.0).abs() < 0.1, "{}", elapsed(&app));
     let failure = app.world().resource::<RunStats>().failure.unwrap();
     assert_eq!(failure.kind(), FaultKind::LooseBolts);
 }

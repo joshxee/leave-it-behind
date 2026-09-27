@@ -2,7 +2,7 @@
 //! an exact start time, site and clock, and the seed fixes the drift
 //! headings, so every run of this level is identical.
 //!
-//! Tuning (4:30 flight, clocks 55-75 s, about 20 s to reach and fix a fault):
+//! Tuning (4:30 flight, clocks 68-86 s, about 20 s to reach and fix a fault):
 //! - 0:10-1:30, settling in: one fault at a time, each kind once.
 //! - 1:36-2:40, pairs: two faults at once, the second pair at opposite ends
 //!   of the ship (helm and airlock).
@@ -24,18 +24,18 @@ pub fn level_one() -> LevelDef {
         },
         slots: vec![
             // Settling in: comfortable, one at a time.
-            FaultSlot::pinned(10.0, Site::PortEngineInner, 67.0),
-            FaultSlot::pinned(38.0, Site::AirlockPortAft, 62.0),
-            FaultSlot::pinned(66.0, Site::Helm, 72.0),
+            FaultSlot::pinned(10.0, Site::PortEngineInner, 80.0),
+            FaultSlot::pinned(38.0, Site::AirlockPortAft, 74.0),
+            FaultSlot::pinned(66.0, Site::Helm, 86.0),
             // Pairs: tense.
-            FaultSlot::pinned(96.0, Site::HullStarboardMid, 62.0),
-            FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 67.0),
-            FaultSlot::pinned(132.0, Site::Helm, 67.0),
-            FaultSlot::pinned(140.0, Site::AirlockHatchLower, 57.0),
+            FaultSlot::pinned(96.0, Site::HullStarboardMid, 74.0),
+            FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 80.0),
+            FaultSlot::pinned(132.0, Site::Helm, 80.0),
+            FaultSlot::pinned(140.0, Site::AirlockHatchLower, 68.0),
             // Final approach: a scramble.
-            FaultSlot::pinned(176.0, Site::PortEngineOuter, 62.0),
-            FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 57.0),
-            FaultSlot::pinned(186.0, Site::Helm, 62.0),
+            FaultSlot::pinned(176.0, Site::PortEngineOuter, 74.0),
+            FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 68.0),
+            FaultSlot::pinned(186.0, Site::Helm, 74.0),
         ],
     }
 }
