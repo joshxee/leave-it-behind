@@ -86,7 +86,7 @@ test('the mouse highlights and clicks menu rows', async ({ page }, testInfo) => 
     await waitForState(page, (s) => s.state === 'Playing' && s.entities.players === 1);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen, the pre-flight check panel under ARRIVAL IN 4:30');
+    await attachShot(page, testInfo, 'played: the flight started from a mouse click, quarters on screen, the pre-flight check panel under ARRIVAL IN 2:30');
   }
 });
 
@@ -109,13 +109,13 @@ test('the end screen scores the flight and leads back to the main menu', async (
     const landed = await waitForState(page, (s) => s.state === 'Landed' && s.menu?.screen === 'End');
     expect(landed.lastRun!.newBest).toBe(true);
     expect(landed.lastRun!.record.landed).toBe(true);
-    expect(landed.menu!.items.map((i) => i.label)).toEqual(['FLY AGAIN (R)', 'MAIN MENU']);
+    expect(landed.menu!.items.map((i) => i.label)).toEqual(['CONTINUE', 'FLY AGAIN (R)', 'MAIN MENU']);
     await page.keyboard.press('Escape');
     const menu = await waitForState(page, (s) => s.state === 'Menu' && s.menu?.screen === 'Main');
     expect(menu.progress.flights).toBe(1);
     expect(menu.progress.best!.landed).toBe(true);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'main-menu-progress: main menu with a dim line under the rows: LEVEL 1 - BEST: LANDED, 0s DAMAGE - 1 FLIGHT');
+    await attachShot(page, testInfo, 'main-menu-progress: main menu with a dim line under the rows: LEVELS LANDED: 1 OF 5 - 1 FLIGHT');
   }
 });

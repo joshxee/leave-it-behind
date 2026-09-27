@@ -35,6 +35,7 @@ use crate::ship::layout::console_point;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
 use crate::ui::{Gauge, Notices, gauge};
+use crate::upgrades::{Upgrade, Upgrades};
 use crate::{AppState, Pause};
 
 const SNAPSHOT_EVERY: u32 = 2;
@@ -128,6 +129,7 @@ struct Snapshot<'w, 's> {
     menu: Res<'w, Menu>,
     menu_ctx: MenuCtx<'w>,
     level: Res<'w, CurrentLevel>,
+    upgrades: Res<'w, Upgrades>,
     progress: Res<'w, Progress>,
     last_run: Res<'w, LastRun>,
     notices: Res<'w, Notices>,
@@ -260,6 +262,26 @@ fn progress_json(s: &Snapshot) -> String {
     )
 }
 
+/// The level being flown: its id, place in the campaign and name.
+fn level_json(s: &Snapshot) -> String {
+    format!(
+        r#"{{"id":{},"number":{},"name":{}}}"#,
+        js_str(&s.level.0.id),
+        s.level.number(),
+        js_str(&s.level.0.name)
+    )
+}
+
+/// Times each upgrade has been picked this campaign.
+fn upgrades_json(s: &Snapshot) -> String {
+    format!(
+        r#"{{"runFaster":{},"fasterWrench":{},"widerTape":{}}}"#,
+        s.upgrades.count(Upgrade::RunFaster),
+        s.upgrades.count(Upgrade::FasterWrench),
+        s.upgrades.count(Upgrade::WiderTape)
+    )
+}
+
 fn settings_json(s: &Snapshot) -> String {
     let settings = s.menu_ctx.settings();
     format!(
@@ -388,7 +410,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
     let console = console_point();
     format!(
         concat!(
-            r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"lastRun":{},"notice":{},"#,
+            r#"{{"state":"{}","paused":{},"menu":{},"settings":{},"progress":{},"level":{},"upgrades":{},"lastRun":{},"notice":{},"#,
             r#""tick":{},"frozen":{},"ready":{},"#,
             r#""room":"{}","camera":{{"x":{:.1},"y":{:.1}}},"#,
             r#""player":{{"x":{:.3},"y":{:.3},"fx":{:.3},"fy":{:.3},"locked":{},"walking":{},"pose":"{}","dir":{}}},"focus":{},"#,
@@ -408,6 +430,8 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         menu_json(s),
         settings_json(s),
         progress_json(s),
+        level_json(s),
+        upgrades_json(s),
         last_run,
         notice,
         s.tick.0,

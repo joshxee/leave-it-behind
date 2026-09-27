@@ -8,7 +8,7 @@ test('the countdown reaching zero lands the ship; R flies again', async ({ page 
     const start = await gameState(page);
     expect(start.journey.remaining).toBeLessThan(3.5);
     await waitForState(page, (s) => s.state === 'Landed');
-    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, FLY AGAIN (R) highlighted and MAIN MENU rows, timer reads LANDED');
+    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, CONTINUE highlighted, FLY AGAIN (R) and MAIN MENU rows, timer reads LANDED');
     await page.keyboard.press('r');
     // The landing scenario applies again to the new run: 3 s from arrival.
     const again = await waitForState(page, (s) => s.state === 'Playing');

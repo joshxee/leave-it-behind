@@ -14,14 +14,16 @@
 ## Architecture
 
 - `src/main.rs` only adds `DefaultPlugins` + `GamePlugin`. All game code is in the library (`src/lib.rs`).
-- The game: level one of a top-down ship-repair time-management game. Design and tuning
+- The game: a five-level campaign of a top-down ship-repair time-management game (`level/campaign.rs`). Design and tuning
   live in the feature READMEs (start with `src/level/README.md` and `src/faults/README.md`).
 - The ship is data: the ASCII map `SHIP` in `src/ship/map.rs` (legend and rules in its docs,
   `src/ship/README.md`). Rooms, walls, doors, colliders and fault sites are all derived from it.
 - One plugin per feature module, each with a `README.md`: `ship/`, `player/`, `tools/`,
   `faults/`, `level/`, `diagnostics/`, `alarm/`, `ui/`, `menu/`, `settings/`, `save/`, `scenarios/`,
-  `coach/` (level one's first-flight coaching: pre-flight check, one tip per fault kind, TIPS setting).
-- Flow: `Boot` → `Menu` (title, main menu; `src/menu/README.md`) → `Playing` → `Landed`/`Lost`.
+  `coach/` (level one's first-flight coaching: pre-flight check, one tip per fault kind, TIPS setting),
+  `upgrades/` (the pick of three between levels: run faster, faster wrench, wider tape).
+- Flow: `Boot` → `Menu` (title, main menu; `src/menu/README.md`) → `Playing` → `Landed`/`Lost`;
+  a landing continues through the upgrade screen to the next level.
   Pausing is the `Pause` sub-state of `Playing`, so it never restarts the run.
 - Infrastructure: `state.rs` (`AppState`, `Pause`, `running`/`not_paused`, `GameSet` order, `RunSet`,
   `RunEntity`), `rng.rs` (`GameRng`),

@@ -1,46 +1,44 @@
-//! Level one: a fully pinned instance of the level format. Every slot has
-//! an exact start time, site and clock, and the seed fixes the drift
-//! headings, so every run of this level is identical.
+//! Level one: a short first flight that teaches the three fixes. The first
+//! three faults are pinned (one of each kind, one at a time, so the coaching
+//! can tip each), and a fourth of a random kind comes last, so one fix is
+//! done twice. Nothing ever overlaps.
 //!
-//! Tuning (4:30 flight, clocks 68-86 s, about 20 s to reach and fix a fault):
-//! - 0:10-1:30, settling in: one fault at a time, each kind once.
-//! - 1:36-2:40, pairs: two faults at once, the second pair at opposite ends
-//!   of the ship (helm and airlock).
-//! - 2:56-3:06, final approach: all three kinds at once, spread tip to tail.
+//! Tuning (2:30 flight, about 20 s to reach and fix a fault):
+//! - 0:10 loose bolts, 0:34 a breach in the same engine room, 0:58 drift.
+//! - 1:24-1:30 one more of any kind, anywhere.
 //!
 //! Breach and bolt clocks are drains on the ship's oxygen and engine heat
 //! (`faults::vitals`): each alone plays exactly as its clock, but one left
 //! long drains the pool for the next of its kind.
 
-use super::def::{Envelope, FaultSlot, LevelDef};
-use crate::faults::Site;
+use super::def::{Envelope, FaultSlot, LevelDef, TimeWindow};
+use crate::faults::{FaultKind, Site};
 
-pub const LEVEL_ONE_SEED: u64 = 0x1EA7_0001;
+/// Where level one's first loose bolts and first breach are (the coaching
+/// points at them).
+pub const FIRST_BOLTS: Site = Site::PortEngineInner;
+pub const FIRST_BREACH: Site = Site::EngineRoomStarboard;
 
 pub fn level_one() -> LevelDef {
     LevelDef {
         id: "one".into(),
         name: "Level 1".into(),
-        duration_secs: 270.0,
-        seed: Some(LEVEL_ONE_SEED),
+        duration_secs: 150.0,
+        // Unseeded: the last fault's kind and site differ from run to run.
+        seed: None,
         envelope: Envelope {
-            max_overlap: 3,
+            max_overlap: 1,
             response_secs: 20.0,
         },
         slots: vec![
-            // Settling in: comfortable, one at a time.
-            FaultSlot::pinned(10.0, Site::PortEngineInner, 80.0),
-            FaultSlot::pinned(38.0, Site::AirlockPortAft, 74.0),
-            FaultSlot::pinned(66.0, Site::Helm, 86.0),
-            // Pairs: tense.
-            FaultSlot::pinned(96.0, Site::HullStarboardMid, 74.0),
-            FaultSlot::pinned(104.0, Site::StarboardEngineOuter, 80.0),
-            FaultSlot::pinned(132.0, Site::Helm, 80.0),
-            FaultSlot::pinned(140.0, Site::AirlockHatchStarboard, 68.0),
-            // Final approach: a scramble.
-            FaultSlot::pinned(176.0, Site::PortEngineOuter, 74.0),
-            FaultSlot::pinned(181.0, Site::AirlockStarboardFore, 68.0),
-            FaultSlot::pinned(186.0, Site::Helm, 74.0),
+            FaultSlot::pinned(10.0, FIRST_BOLTS, 70.0),
+            FaultSlot::pinned(34.0, FIRST_BREACH, 70.0),
+            FaultSlot::pinned(58.0, Site::Helm, 80.0),
+            FaultSlot::any(
+                TimeWindow::new(84.0, 90.0),
+                &FaultKind::ALL,
+                TimeWindow::new(55.0, 58.0),
+            ),
         ],
         coaching: true,
     }
@@ -50,96 +48,45 @@ pub fn level_one() -> LevelDef {
 mod tests {
     use super::*;
     use crate::GameRng;
-    use crate::faults::FaultKind;
-    use crate::faults::breach::SEAL_SECS;
-    use crate::level::def::peak_overlap;
-    use crate::tools::TAPE_CAPACITY;
 
     #[test]
-    fn level_one_is_valid_and_fully_pinned() {
+    fn level_one_is_two_and_a_half_minutes() {
         let level = level_one();
         assert_eq!(level.validate(), Ok(()));
-        assert!(level.is_pinned());
-        assert!(level.seed.is_some());
-        assert!(
-            (180.0..=300.0).contains(&level.duration_secs),
-            "three to five minutes"
-        );
+        assert_eq!(level.duration_secs, 150.0);
+        assert!(level.coaching);
     }
 
     #[test]
-    fn level_one_rolls_the_same_for_any_seed() {
+    fn every_kind_once_then_one_of_them_again() {
         let level = level_one();
-        let a = level.roll(&mut GameRng::from_seed(1));
-        let b = level.roll(&mut GameRng::from_seed(999));
-        assert_eq!(a, b);
-        assert_eq!(a.len(), level.slots.len());
+        let mut kinds_seen = std::collections::HashSet::new();
+        for seed in 0..300 {
+            let plan = level.roll(&mut GameRng::from_seed(seed));
+            assert_eq!(plan.len(), 4);
+            // Coaching tips each kind's first fault: the first three are one of each.
+            let firsts: Vec<FaultKind> = plan.iter().take(3).map(|f| f.site.kind()).collect();
+            for kind in FaultKind::ALL {
+                assert!(
+                    firsts.contains(&kind),
+                    "{kind:?} is not among the first three"
+                );
+            }
+            kinds_seen.insert(plan[3].site.kind());
+        }
+        assert_eq!(kinds_seen.len(), 3, "the repeat can be any kind");
     }
 
     #[test]
-    fn difficulty_ramps_from_one_to_three_at_once() {
+    fn faults_come_one_at_a_time() {
+        assert_eq!(level_one().worst_case_overlap(), 1);
+    }
+
+    #[test]
+    fn the_first_breach_is_in_the_engine_room_with_the_bolts() {
         let level = level_one();
         let plan = level.roll(&mut GameRng::from_seed(0));
-        let r = level.envelope.response_secs;
-        let phase = |from: f32, to: f32| {
-            let p: Vec<_> = plan
-                .iter()
-                .copied()
-                .filter(|f| (from..to).contains(&f.at))
-                .collect();
-            peak_overlap(&p, r)
-        };
-        assert_eq!(phase(0.0, 90.0), 1, "comfortable");
-        assert_eq!(phase(90.0, 170.0), 2, "tense");
-        assert_eq!(phase(170.0, 270.0), 3, "scramble");
-        assert_eq!(peak_overlap(&plan, r), level.envelope.max_overlap);
-    }
-
-    #[test]
-    fn every_kind_starts_once_while_settling_in() {
-        // Coaching tips each kind's first fault: they come one at a time.
-        let plan = level_one().roll(&mut GameRng::from_seed(0));
-        let firsts: Vec<FaultKind> = plan.iter().take(3).map(|f| f.site.kind()).collect();
-        for kind in FaultKind::ALL {
-            assert!(
-                firsts.contains(&kind),
-                "{kind:?} is not among the first three"
-            );
-        }
-        assert!(level_one().coaching);
-    }
-
-    #[test]
-    fn every_kind_appears_and_the_finale_has_all_three() {
-        let plan = level_one().roll(&mut GameRng::from_seed(0));
-        let finale: Vec<FaultKind> = plan
-            .iter()
-            .filter(|f| f.at >= 170.0)
-            .map(|f| f.site.kind())
-            .collect();
-        for kind in FaultKind::ALL {
-            assert!(finale.contains(&kind), "{kind:?} missing from the finale");
-        }
-    }
-
-    #[test]
-    fn every_fault_can_fail_before_landing() {
-        // Otherwise it would not matter whether the player fixed it.
-        let level = level_one();
-        for f in level.roll(&mut GameRng::from_seed(0)) {
-            assert!(f.at + f.clock < level.duration_secs, "{f:?}");
-        }
-    }
-
-    #[test]
-    fn one_roll_of_tape_covers_every_breach_with_room_to_waste() {
-        let breaches = level_one()
-            .slots
-            .iter()
-            .filter(|s| s.choices[0].kind == FaultKind::HullBreach)
-            .count() as f32;
-        let needed = breaches * SEAL_SECS;
-        assert!(needed < TAPE_CAPACITY, "needs {needed}s of tape");
-        assert!(TAPE_CAPACITY - needed >= 5.0, "less than 5s of slack");
+        assert_eq!(plan[0].site.room(), plan[1].site.room());
+        assert_eq!(plan[1].site.kind(), FaultKind::HullBreach);
     }
 }

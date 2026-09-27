@@ -30,6 +30,7 @@ export type BevyState = {
       | 'Settings'
       | 'Pause'
       | 'End'
+      | 'Upgrade'
       | 'ConfirmRestart'
       | 'ConfirmMainMenu'
       | 'ConfirmQuit'
@@ -48,8 +49,12 @@ export type BevyState = {
     fullscreen: boolean;
     vsync: boolean;
   };
-  /** Level one's saved progress. */
+  /** The current level's saved progress. */
   progress: { flights: number; landings: number; best: RunRecord | null };
+  /** The level being flown: `number` is its place in the campaign (1 to 5). */
+  level: { id: string; number: number; name: string };
+  /** Times each upgrade has been picked this campaign. */
+  upgrades: { runFaster: number; fasterWrench: number; widerTape: number };
   lastRun: { record: RunRecord; newBest: boolean } | null;
   notice: string | null;
   tick: number;

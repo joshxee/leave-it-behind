@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::diagnostics::{DiagView, Diagnostics};
 use crate::faults::bolts::Bolt;
 use crate::faults::{Fault, FaultFixed, FaultKind, Site, resolve_faults};
+use crate::level::one::{FIRST_BOLTS, FIRST_BREACH};
 use crate::level::{CurrentLevel, Journey};
 use crate::player::{InteractKind, InteractPressed};
 use crate::scenarios::apply_active_scenario;
@@ -328,14 +329,14 @@ enum CoachPing {
 }
 
 fn spawn_pings(mut commands: Commands, shapes: Res<Shapes>) {
-    let bolt = Site::PortEngineInner.bolts().expect("first bolt target")[0];
+    let bolt = FIRST_BOLTS.bolts().expect("first bolt target")[0];
     for (kind, pos) in [
         (
             CoachPing::Diagnostic,
             layout::ship().center(layout::ship().console_cell()),
         ),
         (CoachPing::Bolt, bolt),
-        (CoachPing::Breach, Site::AirlockPortAft.pos()),
+        (CoachPing::Breach, FIRST_BREACH.pos()),
         (CoachPing::Chair, layout::helm_seat()),
     ] {
         commands.spawn((
@@ -364,22 +365,20 @@ fn note_ping_interactions(
     }
     for msg in tightened.read() {
         if bolts.get(msg.target).is_ok_and(|bolt| {
-            bolt.panel == Site::PortEngineInner
-                && bolt.pos == Site::PortEngineInner.bolts().unwrap()[0]
+            bolt.panel == FIRST_BOLTS && bolt.pos == FIRST_BOLTS.bolts().unwrap()[0]
         }) {
             settings.pings_seen.first_bolt = true;
         }
     }
     if let Some(turn) = tools.turn
         && bolts.get(turn.target).is_ok_and(|bolt| {
-            bolt.panel == Site::PortEngineInner
-                && bolt.pos == Site::PortEngineInner.bolts().unwrap()[0]
+            bolt.panel == FIRST_BOLTS && bolt.pos == FIRST_BOLTS.bolts().unwrap()[0]
         })
     {
         settings.pings_seen.first_bolt = true;
     }
     for msg in tape.read() {
-        if msg.point.distance(Site::AirlockPortAft.pos()) <= crate::faults::breach::BREACH_RADIUS {
+        if msg.point.distance(FIRST_BREACH.pos()) <= crate::faults::breach::BREACH_RADIUS {
             settings.pings_seen.first_breach = true;
         }
     }
@@ -403,8 +402,8 @@ fn draw_pings(
         let show = coach.active
             && match ping {
                 CoachPing::Diagnostic => !journey.launched && !settings.pings_seen.diagnostic,
-                CoachPing::Bolt => has(Site::PortEngineInner) && !settings.pings_seen.first_bolt,
-                CoachPing::Breach => has(Site::AirlockPortAft) && !settings.pings_seen.first_breach,
+                CoachPing::Bolt => has(FIRST_BOLTS) && !settings.pings_seen.first_bolt,
+                CoachPing::Breach => has(FIRST_BREACH) && !settings.pings_seen.first_breach,
                 CoachPing::Chair => has(Site::Helm) && !settings.pings_seen.cockpit_chair,
             };
         visibility.set_if_neq(if show {

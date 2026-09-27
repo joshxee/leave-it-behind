@@ -395,7 +395,11 @@ mod tests {
         world.insert_resource(dummy_sounds());
         let target = world.spawn_empty().id();
         let mut tools = ToolState::default();
-        tools.turn = Some(WrenchTurn { target, left: 0.9 });
+        tools.turn = Some(WrenchTurn {
+            target,
+            left: 0.9,
+            secs: 0.9,
+        });
         world.insert_resource(tools);
         world.run_system_once(sync_wrench).unwrap();
         world.run_system_once(sync_wrench).unwrap();

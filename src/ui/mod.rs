@@ -1,5 +1,6 @@
 //! HUD: the countdown to arrival (top), the current room (top left), the
-//! ship's vitals (top right: oxygen, engine heat, time to impact), the
+//! level (under the room), the ship's vitals (top right: oxygen, engine
+//! heat, time to impact), the
 //! tool belt and a context prompt (bottom), and a controls hint at launch.
 //! Shown during a flight and behind the end screen, hidden on the menus.
 //! It never shows where a fault is: that is the diagnostic screen's job.
@@ -16,7 +17,7 @@ use bevy::prelude::*;
 
 use crate::diagnostics::{DiagView, Diagnostics};
 use crate::faults::drift::Nav;
-use crate::level::{Journey, format_clock};
+use crate::level::{CurrentLevel, Journey, LEVEL_COUNT, format_clock};
 use crate::player::{Focus, InteractKind};
 use crate::settings::Settings;
 use crate::ship::CurrentRoom;
@@ -40,6 +41,9 @@ pub struct TimerText;
 
 #[derive(Component, Debug)]
 pub struct RoomText;
+
+#[derive(Component, Debug)]
+pub struct LevelText;
 
 #[derive(Component, Debug)]
 pub struct PromptText;
@@ -125,6 +129,15 @@ pub fn game_font(asset_server: Option<&AssetServer>, size: f32) -> TextFont {
     font
 }
 
+/// "LEVEL 2 OF 5", or the level's own name outside the campaign (`number` 0).
+pub fn level_label(number: usize, name: &str) -> String {
+    if number == 0 {
+        name.to_uppercase()
+    } else {
+        format!("LEVEL {number} OF {LEVEL_COUNT}")
+    }
+}
+
 pub fn timer_label(remaining: f32) -> String {
     format!("ARRIVAL IN {}", format_clock(remaining))
 }
@@ -194,6 +207,21 @@ fn spawn_hud(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
         Node {
             position_type: PositionType::Absolute,
             top: px(18),
+            left: px(18),
+            ..default()
+        },
+        GlobalZIndex(10),
+    ));
+    commands.spawn((
+        Hud,
+        LevelText,
+        Text::new(""),
+        font(16.0),
+        TextColor(palette::UI_DIM),
+        Node {
+            position_type: PositionType::Absolute,
+            // Under the room name: the vitals panel has the top right.
+            top: px(44),
             left: px(18),
             ..default()
         },
@@ -326,6 +354,7 @@ fn show_notices(
 
 fn update_hud(
     journey: Res<Journey>,
+    level: Res<CurrentLevel>,
     room: Res<CurrentRoom>,
     belt: Res<ToolBelt>,
     settings: Res<Settings>,
@@ -334,6 +363,7 @@ fn update_hud(
         Query<&mut Text, With<TimerText>>,
         Query<&mut Text, With<RoomText>>,
         Query<(&mut Text, &mut TextColor, &BeltSlot)>,
+        Query<&mut Text, With<LevelText>>,
     )>,
     mut hints: Query<&mut Visibility, With<HintText>>,
 ) {
@@ -350,6 +380,12 @@ fn update_hud(
     for mut t in &mut texts.p1() {
         if t.0 != room_name {
             t.0 = room_name.clone();
+        }
+    }
+    let level_name = level_label(level.number(), &level.0.name);
+    for mut t in &mut texts.p3() {
+        if t.0 != level_name {
+            t.0 = level_name.clone();
         }
     }
     for (mut t, mut color, slot) in &mut texts.p2() {
@@ -475,6 +511,8 @@ mod tests {
     #[test]
     fn labels() {
         assert_eq!(timer_label(125.5), "ARRIVAL IN 2:06");
+        assert_eq!(level_label(2, "Level 2"), "LEVEL 2 OF 5");
+        assert_eq!(level_label(0, "Test flight"), "TEST FLIGHT");
         assert_eq!(belt_label(Tool::Tape, 19.2), "[2] TAPE 20s");
         assert_eq!(belt_label(Tool::Wrench, 0.0), "[1] WRENCH");
     }

@@ -28,6 +28,7 @@ pub mod sound;
 pub mod state;
 pub mod tools;
 pub mod ui;
+pub mod upgrades;
 pub mod version;
 
 pub use determinism::TestDeterminismPlugin;
@@ -59,6 +60,7 @@ impl Plugin for GamePlugin {
                 tools::ToolsPlugin,
                 faults::FaultsPlugin,
                 level::LevelPlugin,
+                upgrades::UpgradesPlugin,
             ))
             .add_plugins((
                 diagnostics::DiagnosticsPlugin,
