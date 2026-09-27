@@ -26,6 +26,11 @@ fn key(app: &mut App, key: KeyCode) {
     frame(app);
 }
 
+fn continue_log(app: &mut App) {
+    assert!(matches!(screen(app), Some(Screen::Story(_))));
+    key(app, KeyCode::Enter);
+}
+
 /// The `landing` scenario (every fault fixed, landing 3 s after launch)
 /// flown to the end screen.
 fn landed() -> App {
@@ -46,6 +51,7 @@ fn landing_continues_to_the_upgrades_then_the_next_level() {
     assert_eq!(state(&app), AppState::Landed);
     // RUN FASTER is highlighted: Enter takes it and flies level two.
     key(&mut app, KeyCode::Enter);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
     assert_eq!(level_id(&app), "two");
@@ -60,6 +66,7 @@ fn number_keys_pick_an_upgrade() {
     let mut app = landed();
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Digit3);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(upgrades(&app).picks(), &[Upgrade::WiderTape]);
     assert_eq!(level_id(&app), "two");
@@ -80,22 +87,26 @@ fn flying_a_level_again_and_continuing_never_stacks_extra_picks() {
     let mut app = landed();
     // Land level one, fly it again (R), land, and continue twice over.
     key(&mut app, KeyCode::KeyR);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Digit2);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(upgrades(&app).picks(), &[Upgrade::FasterWrench]);
     // Level two lands too (the scenario applies to every run): on to three.
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);
     key(&mut app, KeyCode::KeyR);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     run_until(&mut app, secs(4.0), |app| state(app) == AppState::Landed);
     frame(&mut app);
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Digit1);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(level_id(&app), "three");
     assert_eq!(
@@ -109,6 +120,7 @@ fn losing_flies_the_same_level_again_with_the_same_upgrades() {
     let mut app = landed();
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Digit1);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
     // A drift about to hit a rock (drift keeps its own clock).
@@ -118,6 +130,7 @@ fn losing_flies_the_same_level_again_with_the_same_upgrades() {
     frame(&mut app);
     assert_eq!(screen(&app), Some(Screen::End));
     key(&mut app, KeyCode::KeyR);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(level_id(&app), "two");
     assert_eq!(upgrades(&app).picks(), &[Upgrade::RunFaster]);
@@ -133,6 +146,7 @@ fn landing_the_last_level_ends_the_campaign() {
     assert_eq!(screen(&app), Some(Screen::End));
     // No CONTINUE: FLY AGAIN is first.
     key(&mut app, KeyCode::Enter);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(level_id(&app), "five");
 }
@@ -149,6 +163,7 @@ fn play_on_the_main_menu_starts_a_new_game() {
     app.world_mut()
         .insert_resource(Upgrades::all_of(Upgrade::WiderTape, 3));
     key(&mut app, KeyCode::Enter);
+    continue_log(&mut app);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     assert_eq!(level_id(&app), "one");
     assert!(upgrades(&app).picks().is_empty());

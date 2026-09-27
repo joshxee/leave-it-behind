@@ -20,6 +20,8 @@ test('landing a level leads to the upgrade screen and on to the next level', asy
 
     // Pick with the mouse.
     await clickRow(page, 'FASTER WRENCH');
+    await waitForState(page, (s) => s.menu?.screen === 'Story');
+    await page.keyboard.press('Enter');
     const two = await waitForState(page, (s) => s.state === 'Playing' && s.level.number === 2);
     expect(two.upgrades).toEqual({ runFaster: 0, fasterWrench: 1, widerTape: 0 });
     expect(two.stats.total).toBe(7);
@@ -31,6 +33,8 @@ test('landing a level leads to the upgrade screen and on to the next level', asy
     await page.keyboard.press('Enter');
     await waitForState(page, (s) => s.menu?.screen === 'Upgrade');
     await page.keyboard.press('3');
+    await waitForState(page, (s) => s.menu?.screen === 'Story');
+    await page.keyboard.press('Enter');
     const three = await waitForState(page, (s) => s.state === 'Playing' && s.level.number === 3);
     expect(three.upgrades).toEqual({ runFaster: 0, fasterWrench: 1, widerTape: 1 });
     expect(errors).toEqual([]);

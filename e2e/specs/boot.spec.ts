@@ -10,15 +10,23 @@ test('boots to the title; the main menu starts level one', async ({ page }, test
     expect(title.state).toBe('Menu');
     expect(title.menu?.screen).toBe('Title');
     expect(title.entities.players).toBe(0);
-    await attachShot(page, testInfo, 'title: LEAVE IT BEHIND in large letters, CLICK OR PRESS ANY KEY in cyan below, dark background, no HUD');
+    expect(title.menu?.title).toBe('JOURNEY 999');
+    await attachShot(page, testInfo, 'title: square engineer cover, JOURNEY 999 and click prompt over the lower band, no HUD');
 
     await page.keyboard.press('Enter');
     const menu = await waitForState(page, (s) => s.menu?.screen === 'Main');
     // The web build has no Quit: a page cannot close its tab.
     expect(menu.menu!.items.map((i) => i.label)).toEqual(['PLAY', 'HOW TO PLAY', 'SETTINGS']);
     expect(menu.menu!.focus).toBe(0);
-    await attachShot(page, testInfo, 'main-menu: LEAVE IT BEHIND title, PLAY row highlighted in cyan, HOW TO PLAY and SETTINGS rows, no QUIT');
+    await attachShot(page, testInfo, 'main-menu: JOURNEY 999 title, PLAY row highlighted in cyan, HOW TO PLAY and SETTINGS rows, no QUIT');
 
+    await page.keyboard.press('Enter');
+    const log = await waitForState(page, (s) => s.menu?.screen === 'Story');
+    expect(log.entities.players).toBe(0);
+    expect(log.menu!.lines).toEqual(["One more journey. Then I'm home."]);
+    await attachShot(page, testInfo, 'engineer log: one line centered on black before the flight begins');
+    await page.waitForTimeout(1000);
+    expect((await gameState(page)).entities.players).toBe(0);
     await page.keyboard.press('Enter');
     const s = await waitForState(page, (t) => t.state === 'Playing' && t.entities.players === 1);
     expect(s.menu).toBeNull();

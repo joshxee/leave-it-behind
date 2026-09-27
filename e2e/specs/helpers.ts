@@ -25,6 +25,7 @@ export type BevyState = {
   menu: {
     screen:
       | 'Title'
+      | 'Story'
       | 'Main'
       | 'HowToPlay'
       | 'Settings'
@@ -38,6 +39,8 @@ export type BevyState = {
     depth: number;
     focus: number;
     items: MenuRow[];
+    title: string;
+    lines: string[];
   } | null;
   settings: {
     shake: number;

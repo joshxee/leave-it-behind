@@ -126,7 +126,18 @@ impl Content {
     }
 }
 
-pub const GAME_TITLE: &str = "LEAVE IT BEHIND";
+pub const GAME_TITLE: &str = "JOURNEY 999";
+
+pub const ENGINEER_LOGS: &[&str] = &[
+    "One more journey. Then I'm home.",
+    "I just need to survive one more night.",
+    "Please don't fail on me this time.",
+    "I can still hear home through the static.",
+    "A little more tape. A little further.",
+    "They'll leave a light on. They have to.",
+    "Hold together. We're almost there.",
+    "One more journey. That's what I said last time.",
+];
 
 pub fn content(screen: Screen, ctx: &Ctx) -> Content {
     match screen {
@@ -138,6 +149,9 @@ pub fn content(screen: Screen, ctx: &Ctx) -> Content {
             c
         }
         Screen::Main => main_menu(ctx),
+        Screen::Story(index) => {
+            Content::new("").line(ENGINEER_LOGS[index % ENGINEER_LOGS.len()], Style::Body)
+        }
         Screen::HowToPlay => how_to_play(),
         Screen::Settings => settings(ctx),
         Screen::Pause => pause(ctx),
@@ -151,6 +165,7 @@ pub fn content(screen: Screen, ctx: &Ctx) -> Content {
 pub fn escape_action(screen: Screen) -> Option<MenuAction> {
     match screen {
         Screen::Title => Some(MenuAction::Continue),
+        Screen::Story(_) => Some(MenuAction::Launch),
         Screen::Main => None,
         Screen::HowToPlay | Screen::Settings | Screen::Upgrade | Screen::Confirm(_) => {
             Some(MenuAction::Back)
@@ -433,6 +448,23 @@ mod tests {
             .iter()
             .map(|i| i.label(&Settings::default()))
             .collect()
+    }
+
+    #[test]
+    fn engineer_logs_are_single_lines_and_wrap() {
+        for index in 0..ENGINEER_LOGS.len() {
+            let log = content(Screen::Story(index), &ctx(false));
+            assert!(log.title.is_empty());
+            assert!(log.items.is_empty());
+            assert!(log.footer.is_empty());
+            assert_eq!(log.lines.len(), 1);
+            assert!(log.lines[0].0.is_ascii());
+            assert!(!log.lines[0].0.contains('\n'));
+        }
+        assert_eq!(
+            content(Screen::Story(ENGINEER_LOGS.len()), &ctx(false)),
+            content(Screen::Story(0), &ctx(false))
+        );
     }
 
     #[test]

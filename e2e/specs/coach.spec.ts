@@ -18,6 +18,7 @@ async function press<A>(page: Page, key: string, done: (s: BevyState, arg: A) =>
 /** From the title to a flight, as a player gets there: any key, then PLAY. */
 async function playFromTheTitle(page: Page) {
   await press(page, 'Enter', (s) => s.menu?.screen === 'Main');
+  await press(page, 'Enter', (s) => s.menu?.screen === 'Story');
   return press(page, 'Enter', (s) => s.state === 'Playing' && s.entities.players === 1);
 }
 
@@ -116,6 +117,7 @@ test('TIPS in the settings switches the coaching off and back on', async ({ page
     // Off: the flight launches at once, with no coaching.
     await press(page, 'Escape', (s) => s.menu?.screen === 'Main');
     for (const row of [1, 0]) await press(page, 'ArrowUp', (s, r) => s.menu?.focus === r, row);
+    await press(page, 'Enter', (s) => s.menu?.screen === 'Story');
     const flight = await press(page, 'Enter', (s) => s.state === 'Playing' && s.entities.players === 1);
     expect(flight.journey.launched).toBe(true);
     expect(flight.coach.lines).toEqual([]);
@@ -131,6 +133,7 @@ test('TIPS in the settings switches the coaching off and back on', async ({ page
     for (const row of [2, 1]) await press(page, 'ArrowUp', (s, r) => s.menu?.focus === r, row);
     await press(page, 'Enter', (s) => s.menu?.screen === 'ConfirmRestart');
     await press(page, 'ArrowDown', (s) => s.menu?.focus === 1);
+    await press(page, 'Enter', (s) => s.menu?.screen === 'Story');
     const restarted = await press(page, 'Enter', (s) => s.state === 'Playing' && s.menu === null && !s.paused);
     expect(restarted.journey.launched).toBe(false);
     expect(restarted.coach.lines[0]).toContain('diagnostic console');

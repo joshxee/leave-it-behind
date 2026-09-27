@@ -20,7 +20,7 @@ impl Plugin for VersionPlugin {
 }
 
 fn log_version() {
-    info!("Leave It Behind version {GAME_VERSION}");
+    info!("Journey 999 version {GAME_VERSION}");
 }
 
 #[cfg(not(feature = "e2e"))]

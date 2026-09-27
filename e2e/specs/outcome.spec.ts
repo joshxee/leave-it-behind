@@ -11,6 +11,8 @@ test('fixing every fault lands the ship; R flies again', async ({ page }, testIn
     await waitForState(page, (s) => s.state === 'Landed');
     await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, CONTINUE highlighted, FLY AGAIN (R) and MAIN MENU rows, top of the HUD reads LANDED');
     await page.keyboard.press('r');
+    await waitForState(page, (s) => s.menu?.screen === 'Story');
+    await page.keyboard.press('Enter');
     // The landing scenario applies again to the new run: every fault fixed.
     const again = await waitForState(page, (s) => s.state === 'Playing');
     expect(again.player.x).toBeCloseTo(start.player.x, 0);

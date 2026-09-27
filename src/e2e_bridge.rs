@@ -222,7 +222,8 @@ fn menu_json(s: &Snapshot) -> String {
         return "null".to_string();
     };
     let ctx = s.menu_ctx.get();
-    let items = content(top.screen, &ctx).items;
+    let shown = content(top.screen, &ctx);
+    let items = &shown.items;
     let mut rows = String::new();
     for (i, item) in items.iter().enumerate() {
         let rect = s
@@ -247,11 +248,18 @@ fn menu_json(s: &Snapshot) -> String {
         );
     }
     format!(
-        r#"{{"screen":"{}","depth":{},"focus":{},"items":[{}]}}"#,
+        r#"{{"screen":"{}","depth":{},"focus":{},"items":[{}],"title":{},"lines":[{}]}}"#,
         top.screen.as_str(),
         s.menu.stack.len(),
         top.focus,
-        rows
+        rows,
+        js_str(&shown.title),
+        shown
+            .lines
+            .iter()
+            .map(|(line, _)| js_str(line))
+            .collect::<Vec<_>>()
+            .join(",")
     )
 }
 

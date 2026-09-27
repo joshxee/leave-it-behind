@@ -78,6 +78,7 @@ fn play_from_the_title(app: &mut App) {
     boot_to_menu(app);
     key(app, KeyCode::Space);
     pick(app, 0);
+    key(app, KeyCode::Enter);
     run_until(app, 3, |app| state(app) == AppState::Playing);
     frame(app);
 }
@@ -195,6 +196,7 @@ fn the_coaching_is_never_repeated() {
     key(&mut app, KeyCode::Escape);
     pick(&mut app, 1);
     pick(&mut app, 1);
+    key(&mut app, KeyCode::Enter);
     frame(&mut app);
     assert_eq!(state(&app), AppState::Playing);
     assert!(launched(&app), "no pre-flight check the second time");
@@ -228,6 +230,7 @@ fn tips_off_skips_the_coaching_and_on_brings_it_back() {
     assert_eq!(seen(&app), TipsSeen::EVERY);
     key(&mut app, KeyCode::Escape);
     pick(&mut app, 0);
+    key(&mut app, KeyCode::Enter);
     run_until(&mut app, 3, |app| state(app) == AppState::Playing);
     frame(&mut app);
     assert!(launched(&app));
@@ -249,6 +252,7 @@ fn tips_off_skips_the_coaching_and_on_brings_it_back() {
     key(&mut app, KeyCode::Escape);
     pick(&mut app, 1);
     pick(&mut app, 1);
+    key(&mut app, KeyCode::Enter);
     frame(&mut app);
     assert!(!launched(&app));
     assert_eq!(panel(&mut app), [Tip::Preflight.text()]);

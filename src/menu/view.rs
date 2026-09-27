@@ -37,6 +37,79 @@ pub struct RowText(pub usize);
 #[derive(Component, Debug, Default)]
 pub struct Clicky(pub bool);
 
+pub fn spawn_title(
+    commands: &mut Commands,
+    assets: Option<&AssetServer>,
+    font: &impl Fn(f32) -> TextFont,
+) {
+    let root = commands
+        .spawn((
+            MenuRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(palette::VOID),
+            GlobalZIndex(MENU_Z),
+        ))
+        .id();
+    if let Some(assets) = assets {
+        commands.spawn((
+            ImageNode::new(assets.load("cover/engineer-emergency-cover-square.png")),
+            Node {
+                width: Val::VMin(100.0),
+                height: Val::VMin(100.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            ChildOf(root),
+        ));
+    }
+    let caption = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: px(0),
+                width: percent(100),
+                padding: UiRect::all(px(24)),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: px(12),
+                ..default()
+            },
+            BackgroundColor(palette::VOID.with_alpha(0.82)),
+            ChildOf(root),
+        ))
+        .id();
+    commands.spawn((
+        Text::new(super::screens::GAME_TITLE),
+        font(64.0),
+        TextColor(palette::UI_TITLE),
+        TextLayout::justify(Justify::Center),
+        Node {
+            max_width: percent(100),
+            ..default()
+        },
+        ChildOf(caption),
+    ));
+    commands.spawn((
+        Text::new("CLICK OR PRESS ANY KEY"),
+        font(22.0),
+        TextColor(palette::UI_ACCENT),
+        TextLayout::justify(Justify::Center),
+        Node {
+            max_width: percent(100),
+            ..default()
+        },
+        ChildOf(caption),
+    ));
+}
+
 pub fn spawn_screen(
     commands: &mut Commands,
     content: &Content,
@@ -63,16 +136,18 @@ pub fn spawn_screen(
         ))
         .id();
     let title_size = if content.big_title { 84.0 } else { 56.0 };
-    commands.spawn((
-        Text::new(content.title.clone()),
-        font(title_size),
-        TextColor(palette::UI_TITLE),
-        Node {
-            margin: UiRect::bottom(px(8)),
-            ..default()
-        },
-        ChildOf(root),
-    ));
+    if !content.title.is_empty() {
+        commands.spawn((
+            Text::new(content.title.clone()),
+            font(title_size),
+            TextColor(palette::UI_TITLE),
+            Node {
+                margin: UiRect::bottom(px(8)),
+                ..default()
+            },
+            ChildOf(root),
+        ));
+    }
     for (text, style) in &content.lines {
         let (size, color, top) = match style {
             Style::Body => (20.0, palette::UI_TEXT, 0.0),
@@ -87,6 +162,7 @@ pub fn spawn_screen(
             TextLayout::justify(Justify::Center),
             Node {
                 margin: UiRect::top(px(top)),
+                max_width: percent(90),
                 ..default()
             },
             ChildOf(root),
