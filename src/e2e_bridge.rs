@@ -23,9 +23,9 @@ use crate::alarm::Alarm;
 use crate::coach::{Coach, lines};
 use crate::determinism::FixedTick;
 use crate::diagnostics::Diagnostics;
-use crate::faults::Fault;
 use crate::faults::bolts::Bolt;
 use crate::faults::drift::{Nav, in_band};
+use crate::faults::{Fault, Vitals};
 use crate::level::{CurrentLevel, Damage, Journey, LastRun, Progress, RunRecord, RunStats};
 use crate::menu::{Menu, MenuCtx, MenuRow, content};
 use crate::player::sprite::EngineerSprite;
@@ -34,7 +34,7 @@ use crate::ship::doors::Door;
 use crate::ship::layout::console_point;
 use crate::ship::{CameraRig, CurrentRoom};
 use crate::tools::{TapeStrip, ToolBelt, ToolState};
-use crate::ui::Notices;
+use crate::ui::{Gauge, Notices, gauge};
 use crate::{AppState, Pause};
 
 const SNAPSHOT_EVERY: u32 = 2;
@@ -150,6 +150,7 @@ struct Snapshot<'w, 's> {
     nav: Res<'w, Nav>,
     diag: Res<'w, Diagnostics>,
     alarm: Res<'w, Alarm>,
+    vitals: Res<'w, Vitals>,
     stats: Res<'w, RunStats>,
     coach: Res<'w, Coach>,
     players: Query<
@@ -293,6 +294,23 @@ fn coach_json(s: &Snapshot) -> String {
     )
 }
 
+/// What the vitals panel's rows say, top to bottom.
+fn gauges_json(s: &Snapshot) -> String {
+    let rows: Vec<String> = Gauge::ALL
+        .map(|g| gauge(g, &s.vitals, s.faults.iter()))
+        .iter()
+        .map(|r| {
+            format!(
+                r#"{{"label":{},"value":{},"alert":{}}}"#,
+                js_str(r.label),
+                js_str(&r.value),
+                r.alert
+            )
+        })
+        .collect();
+    format!("[{}]", rows.join(","))
+}
+
 fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
     let (pos, facing, walking, locked) = s
         .players
@@ -333,7 +351,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             f.kind().as_str(),
             f.site.as_str(),
             f.site.room().as_str(),
-            f.remaining(),
+            s.vitals.time_left(f),
             f.repair,
             p.x,
             p.y,
@@ -381,6 +399,7 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
             r#""nav":{{"engaged":{},"x":{:.3},"y":{:.3},"inBand":{}}},"#,
             r#""diag":"{}","diagUses":{},"#,
             r#""alarm":{{"level":{:.3},"active":{},"jolt":{:.3}}},"#,
+            r#""vitals":{{"oxygen":{:.3},"heat":{:.3},"gauges":{}}},"#,
             r#""stats":{{"started":{},"fixed":{},"failure":{},"damage":{}}},"#,
             r#""entities":{{"players":{},"faults":{},"tapeStrips":{}}}}}"#,
         ),
@@ -432,6 +451,9 @@ fn snapshot_json(bridge: &Bridge, s: &Snapshot) -> String {
         s.alarm.level,
         s.alarm.active,
         s.alarm.jolt,
+        s.vitals.oxygen_left(),
+        s.vitals.heat.spent,
+        gauges_json(s),
         s.stats.started,
         s.stats.fixed,
         failure,

@@ -14,3 +14,4 @@ mod save;
 mod scenarios;
 mod state;
 mod tools;
+mod vitals;

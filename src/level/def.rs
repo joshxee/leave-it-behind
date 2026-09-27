@@ -9,9 +9,12 @@
 //! The [`Envelope`] bounds difficulty: assuming the engineer handles each
 //! fault within `response_secs`, no rolled schedule may ever ask for more than
 //! `max_overlap` faults at once. `validate` checks the worst case over every
-//! possible roll, so randomized levels stay inside the same envelope.
+//! possible roll, so randomized levels stay inside the same envelope. It
+//! also checks that, handled that fast, no roll could spend the oxygen or
+//! the engine's heat (`worst_case_strain`).
 
 use crate::GameRng;
+use crate::faults::vitals::RECOVER_SECS;
 use crate::faults::{CLOCK_LIMITS, FaultKind, Site};
 
 /// Inclusive range of seconds. `from == to` pins the value.
@@ -130,12 +133,30 @@ pub struct PlannedFault {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LevelError {
     Duration(f32),
-    NoChoices { slot: usize },
-    Weight { slot: usize },
-    SiteKind { slot: usize },
-    Window { slot: usize },
-    Clock { slot: usize },
-    Envelope { worst: usize, max: usize },
+    NoChoices {
+        slot: usize,
+    },
+    Weight {
+        slot: usize,
+    },
+    SiteKind {
+        slot: usize,
+    },
+    Window {
+        slot: usize,
+    },
+    Clock {
+        slot: usize,
+    },
+    Envelope {
+        worst: usize,
+        max: usize,
+    },
+    /// Handled within `response_secs`, some roll could still spend this
+    /// kind's pool (oxygen or engine heat).
+    Pool {
+        kind: FaultKind,
+    },
 }
 
 /// Bounds on a level's length, in seconds.
@@ -188,6 +209,11 @@ impl LevelDef {
                 max: self.envelope.max_overlap,
             });
         }
+        for kind in FaultKind::ALL.into_iter().filter(|k| k.pooled()) {
+            if self.worst_case_strain(kind) >= 1.0 {
+                errors.push(LevelError::Pool { kind });
+            }
+        }
         if errors.is_empty() {
             Ok(())
         } else {
@@ -203,6 +229,28 @@ impl LevelDef {
             .iter()
             .map(|s| (s.window.from, s.window.to + self.envelope.response_secs));
         max_overlap(spans)
+    }
+
+    /// Most of `kind`'s pool any roll could spend (1 is fatal) if each fault
+    /// is handled within `response_secs`. Worst case: every slot that may
+    /// roll this kind does, at its shortest clock, and drains for the whole
+    /// response; the pool recovers only in gaps no roll can close.
+    pub fn worst_case_strain(&self, kind: FaultKind) -> f32 {
+        let response = self.envelope.response_secs;
+        let mut slots: Vec<&FaultSlot> = self
+            .slots
+            .iter()
+            .filter(|s| s.choices.iter().any(|c| c.kind == kind))
+            .collect();
+        slots.sort_by(|a, b| a.window.from.total_cmp(&b.window.from));
+        let (mut spent, mut peak, mut busy_until) = (0.0_f32, 0.0_f32, f32::NEG_INFINITY);
+        for s in slots {
+            let rest = (s.window.from - busy_until).max(0.0);
+            spent = (spent - rest / RECOVER_SECS).max(0.0) + response / s.clock.from;
+            peak = peak.max(spent);
+            busy_until = busy_until.max(s.window.to + response);
+        }
+        peak
     }
 
     /// Turns every slot into a concrete fault, sorted by start time. A
@@ -390,6 +438,25 @@ mod tests {
             level.validate().unwrap_err(),
             vec![LevelError::Envelope { worst: 2, max: 1 }]
         );
+    }
+
+    #[test]
+    fn pools_must_survive_the_worst_roll() {
+        let breach = |at: f32| FaultSlot::pinned(at, Site::HullPortAft, 60.0);
+        let mut level = LevelDef {
+            slots: vec![breach(10.0), breach(100.0)],
+            ..random_level()
+        };
+        // Each breach spends 20 / 60 of the air, with time to refill between.
+        assert!((level.worst_case_strain(FaultKind::HullBreach) - 1.0 / 3.0).abs() < 1e-5);
+        assert_eq!(level.worst_case_strain(FaultKind::LooseBolts), 0.0);
+        assert!(level.validate().is_ok());
+        // Four breaches back to back, no time to refill: well past empty.
+        level.slots = vec![breach(10.0), breach(20.0), breach(30.0), breach(40.0)];
+        assert!(level.worst_case_strain(FaultKind::HullBreach) >= 1.0);
+        assert!(level.validate().unwrap_err().contains(&LevelError::Pool {
+            kind: FaultKind::HullBreach
+        }));
     }
 
     #[test]

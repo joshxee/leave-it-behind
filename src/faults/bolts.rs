@@ -1,11 +1,12 @@
 //! Loose bolts. A fault loosens the three bolts of one engine panel; each
 //! needs one wrench turn (walk up, click; the wrench head snaps to the bolt).
-//! The engine block glows hotter as the fault's clock runs down.
+//! Loose bolts heat the engine ([`Vitals::heat`]); the block with the
+//! loose panel glows with that heat.
 
 use bevy::prelude::*;
 
 use super::sites::BOLT_SITES;
-use super::{Fault, FaultKind, Site};
+use super::{Fault, FaultKind, Site, Vitals};
 use crate::art::maintenance::MaintenanceArt as Art;
 use crate::shapes::at;
 use crate::ship::EngineBlock;
@@ -160,10 +161,12 @@ pub fn engine_of(site: Site) -> Option<EngineBlock> {
     }
 }
 
-/// Engine heat: the in-room cue that this engine has a bolt fault.
+/// Engine heat: the in-room cue that this engine has a bolt fault. Only the
+/// block with loose bolts glows, with the ship's engine heat.
 fn heat_engines(
     art: Res<Art>,
     time: Res<Time>,
+    vitals: Res<Vitals>,
     faults: Query<&Fault>,
     mut engines: Query<(&EngineBlock, &mut Sprite)>,
 ) {
@@ -171,7 +174,7 @@ fn heat_engines(
         let heat = faults
             .iter()
             .filter(|f| engine_of(f.site) == Some(*engine))
-            .map(|f| f.urgency())
+            .map(|f| vitals.urgency(f))
             .fold(0.0, f32::max);
         art.frame(
             &mut sprite,
