@@ -10,9 +10,46 @@ export type FaultState = {
   y: number;
 };
 
+export type Damage = { oxygen: number; course: number; engine: number; total: number };
+
+export type RunRecord = { landed: boolean; survived: number; damage: Damage };
+
+/** A menu row: its label, and its center and size in canvas pixels once laid out. */
+export type MenuRow = { label: string; x?: number; y?: number; w?: number; h?: number };
+
 /** `window.__bevyState`, published by `src/e2e_bridge.rs`. World units; y up. */
 export type BevyState = {
-  state: 'Boot' | 'Playing' | 'Landed' | 'Lost';
+  state: 'Boot' | 'Menu' | 'Playing' | 'Landed' | 'Lost';
+  paused: boolean;
+  /** The top menu screen, or null during a flight. */
+  menu: {
+    screen:
+      | 'Title'
+      | 'Main'
+      | 'HowToPlay'
+      | 'Settings'
+      | 'Pause'
+      | 'End'
+      | 'ConfirmRestart'
+      | 'ConfirmMainMenu'
+      | 'ConfirmQuit'
+      | 'ConfirmResetProgress';
+    depth: number;
+    focus: number;
+    items: MenuRow[];
+  } | null;
+  settings: {
+    shake: number;
+    flash: number;
+    controlsHint: boolean;
+    pauseUnfocused: boolean;
+    fullscreen: boolean;
+    vsync: boolean;
+  };
+  /** Level one's saved progress. */
+  progress: { flights: number; landings: number; best: RunRecord | null };
+  lastRun: { record: RunRecord; newBest: boolean } | null;
+  notice: string | null;
   tick: number;
   frozen: boolean;
   ready: boolean;
@@ -46,7 +83,7 @@ export type BevyState = {
   diag: 'Closed' | 'Scanning' | 'Open';
   diagUses: number;
   alarm: { level: number; active: number; jolt: number };
-  stats: { started: number; fixed: number; failure: FaultState['kind'] | null };
+  stats: { started: number; fixed: number; failure: FaultState['kind'] | null; damage: Damage };
   entities: { players: number; faults: number; tapeStrips: number };
 };
 
@@ -138,6 +175,22 @@ export async function aimAt(page: Page, p: { x: number; y: number }) {
   const s = await gameState(page);
   const screen = toScreen(s, p);
   await page.mouse.move(screen.x, screen.y);
+}
+
+/**
+ * Clicks the menu row labelled `label` (as `__bevyState.menu.items` lists it)
+ * with the real mouse, once the row is laid out.
+ */
+export async function clickRow(page: Page, label: string) {
+  const s = await waitForState(
+    page,
+    (t, l) => !!t.menu?.items.some((i) => i.label === l && (i.w ?? 0) > 0),
+    label,
+  );
+  const row = s.menu!.items.find((i) => i.label === label)!;
+  await page.mouse.move(row.x!, row.y!);
+  await page.mouse.down();
+  await page.mouse.up();
 }
 
 /** Advances exactly `n` fixed ticks (requires `?freeze=1`). */

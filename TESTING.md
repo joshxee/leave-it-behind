@@ -56,11 +56,15 @@ against Bevy as its own binary (`autotests = false`; one `[[test]]` in
 Helpers (`tests/integration/common.rs`):
 
 - `test_app()`: `MinimalPlugins` + `StatesPlugin` + `ButtonInput` / scroll resources + a
-  fake 1280×720 `PrimaryWindow` + `GamePlugin` + `TestDeterminismPlugin`. `InputPlugin` is
-  deliberately absent so tests control presses. Startup has not run yet.
+  fake 1280×720 `PrimaryWindow` + saves in memory (`Storage::memory()`) + `GamePlugin` +
+  `TestDeterminismPlugin`. `InputPlugin` is deliberately absent so tests control presses.
+  Startup has not run yet. `test_app_with_storage(storage)` reuses a `Storage` taken from an
+  earlier app (`world_mut().remove_resource::<Storage>()`) to test what was saved.
 - `test_app_with(Scenario::X)`: starts from a scenario, already booted into `Playing`.
-- `boot`, `frame` (one tick, then clears just-pressed like `InputPlugin`), `run_frames`,
-  `run_until(app, max, pred)`, `secs(s)` (frames in `s` seconds), `state`.
+- `boot` (straight into a flight, skipping the title as any scenario does), `boot_to_menu` (the
+  title screen, as a player boots), `frame` (one tick, then clears just-pressed like
+  `InputPlugin`), `run_frames`, `run_until(app, max, pred)`, `secs(s)` (frames in `s` seconds),
+  `state`, `paused`, `screen` (top menu screen), `focus` (its highlighted row).
 - Input: `press` / `release` / `tap` keys, `mouse_down` / `mouse_up` / `click`, `scroll`,
   `aim_at(world_point)` (puts the cursor over a world point in the current room),
   `key_toward(direction)` (the WASD key along a direction, e.g. through a door).
@@ -70,7 +74,10 @@ Rules:
 
 - Every `app.update()` is exactly one `FixedUpdate` tick (`TimeUpdateStrategy::ManualDuration`). Never sleep.
 - Input read in `Update` is applied by `FixedUpdate` next frame, so after `tap`, call `frame` once more.
-- Use `tap` for E, R and number keys (they act on just-pressed); hold WASD with `press`.
+- Use `tap` for E, R, number keys and menu keys (they act on just-pressed); hold WASD with `press`.
+- Menus: drive them with keys (arrows, Enter, Esc). Mouse clicks need Bevy's UI picking, which
+  headless apps lack; they are covered by `e2e/specs/menus.spec.ts`.
+- Focus loss: `world_mut().write_message(WindowFocused { window, focused: false })`, then two frames.
 - Aiming is relative to the current room's camera: after `put_player` into another room, run a frame before `aim_at`.
 - Messages: take a cursor with `get_cursor_current()` before acting, then `cursor.read(messages)`.
 - States: set `NextState<AppState>`, `frame`, then assert `State<AppState>`.
@@ -101,7 +108,8 @@ exist). The same scenario is used by native tests (`test_app_with`), the web
 build (`?scenario=<name>`), native e2e runs (`SCENARIO=<name> cargo run --features e2e`),
 and `node e2e/tools/capture.mjs --scenario <name>`. Current ones: `default`, `quiet`,
 `bolts`, `breach`, `drift`, `diagnostics`, `scramble`, `landing`, `breach_critical`,
-`tape_low` (see `src/scenarios/README.md`).
+`tape_low`, `paused`, `settings` (see `src/scenarios/README.md`). Any scenario skips the title
+screen; without one the game boots to the title, as players see it.
 
 Template:
 
@@ -145,12 +153,16 @@ cd e2e && npm ci && npx playwright test --grep-invert @visual   # serve-web.sh s
 ```
 
 Test bridge (`src/e2e_bridge.rs`, wasm + `--features e2e` only):
-`window.__bevyReady` after the first rendered frame in `Playing`, and
-`window.__bevyState`: state, tick, room, camera, player (position, facing,
+`window.__bevyReady` after the first rendered frame of the first screen (the
+title, or a flight with `?scenario=`), and `window.__bevyState`: state, paused,
+menu (screen, focus, rows with their labels and canvas rectangles), settings,
+progress, lastRun, notice, tick, room, camera, player (position, facing,
 locked, walking, animation `pose` and facing `dir`), focus, tool, tape, faults
 (kind, site, room, remaining, repair, position), loose bolts, doors (position,
-frame, open), nav marker, diagnostics view, alarm, run stats. The
-full shape is `BevyState` in `e2e/specs/helpers.ts`. With `?freeze=1`,
+frame, open), nav marker, diagnostics view, alarm, run stats (with damage). The
+full shape is `BevyState` in `e2e/specs/helpers.ts`. Saves use the page's real
+`localStorage` (each test gets a fresh browser context), so a `page.reload()`
+checks what was saved. With `?freeze=1`,
 `window.__bevyStep(n)` advances exactly `n` fixed ticks (helper: `step(page, n)`).
 Under `e2e`, the canvas is fixed at 1280×720, the seed is fixed, and each frame
 advances game time by exactly one tick (slow software rendering slows the game,
@@ -186,6 +198,8 @@ test('tape seals the breach', async ({ page }, testInfo) => {
 ```
 
 Focus the canvas (`openGame` does) rather than clicking it: a click also uses the held tool.
+`openGame(page)` without a scenario starts at the title screen (`s.menu.screen === 'Title'`);
+`clickRow(page, label)` clicks a menu row by its label.
 
 CI runs with `retries: 1`. A test that passes only on retry is **flaky**, and
 `REPORT.md` lists it under "Flaky" as a warning. Fix it; don't ignore it.

@@ -1,17 +1,19 @@
 //! The flight: the countdown to arrival, the fault schedule of the current
-//! level, and the outcome (landing, or a fault's clock running out). R
-//! restarts from the landed or lost screen.
+//! level, the damage the faults do, and the outcome (landing, or a fault's
+//! clock running out). A finished flight is recorded in [`Progress`].
 
 pub mod def;
 pub mod one;
+pub mod progress;
 
 use bevy::prelude::*;
 
 pub use def::{Choice, Envelope, FaultSlot, LevelDef, PlannedFault, TimeWindow};
 pub use one::level_one;
+pub use progress::{Damage, LastRun, LevelProgress, Progress, RunRecord};
 
 use crate::faults::{Fault, FaultFailed, FaultFixed, Site, fault_bundle, resolve_faults};
-use crate::{AppState, GameRng, GameSet, RunSet};
+use crate::{AppState, GameRng, GameSet, RunSet, running};
 
 /// The level being flown.
 #[derive(Resource, Debug, Clone)]
@@ -54,6 +56,8 @@ pub struct RunStats {
     pub fixed: u32,
     /// The fault that ended the run.
     pub failure: Option<Site>,
+    /// How long each kind of fault ran before it was fixed.
+    pub damage: Damage,
 }
 
 pub struct LevelPlugin;
@@ -65,13 +69,15 @@ impl Plugin for LevelPlugin {
             .insert_resource(CurrentLevel(level))
             .init_resource::<FaultPlan>()
             .init_resource::<RunStats>()
+            .init_resource::<Progress>()
+            .init_resource::<LastRun>()
             .add_systems(OnEnter(AppState::Playing), start_run.in_set(RunSet::Spawn))
             .add_systems(
                 FixedUpdate,
-                (advance_journey, start_due_faults)
+                (advance_journey, start_due_faults, track_damage)
                     .chain()
                     .in_set(GameSet::Simulate)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
             .add_systems(
                 FixedUpdate,
@@ -79,14 +85,10 @@ impl Plugin for LevelPlugin {
                     .chain()
                     .after(resolve_faults)
                     .in_set(GameSet::Resolve)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
-            .add_systems(
-                Update,
-                restart
-                    .in_set(GameSet::Input)
-                    .run_if(in_state(AppState::Landed).or_else(in_state(AppState::Lost))),
-            );
+            .add_systems(OnEnter(AppState::Landed), record_run)
+            .add_systems(OnEnter(AppState::Lost), record_run);
     }
 }
 
@@ -134,6 +136,15 @@ fn start_due_faults(
     }
 }
 
+/// Every unfixed fault adds its tick to its kind's damage.
+fn track_damage(time: Res<Time>, faults: Query<&Fault>, mut stats: ResMut<RunStats>) {
+    for fault in &faults {
+        if !fault.is_repaired() {
+            stats.damage.add(fault.kind(), time.delta_secs());
+        }
+    }
+}
+
 fn count_fixes(mut fixed: MessageReader<FaultFixed>, mut stats: ResMut<RunStats>) {
     stats.fixed += fixed.read().count() as u32;
 }
@@ -156,10 +167,25 @@ fn decide_outcome(
     }
 }
 
-fn restart(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<AppState>>) {
-    if keys.just_pressed(KeyCode::KeyR) {
-        next.set(AppState::Playing);
-    }
+/// Scores the flight that just ended and keeps it if it is the level's best.
+fn record_run(
+    state: Res<State<AppState>>,
+    level: Res<CurrentLevel>,
+    journey: Res<Journey>,
+    stats: Res<RunStats>,
+    mut progress: ResMut<Progress>,
+    mut last: ResMut<LastRun>,
+) {
+    let record = RunRecord {
+        landed: *state.get() == AppState::Landed,
+        damage: stats.damage,
+        survived: journey.elapsed.min(journey.duration),
+    };
+    let new_best = progress.record(&level.0.id, record);
+    *last = LastRun {
+        record: Some(record),
+        new_best,
+    };
 }
 
 /// `m:ss`, rounding up so the clock reads 0:00 only on arrival.

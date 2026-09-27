@@ -8,7 +8,7 @@ test('the countdown reaching zero lands the ship; R flies again', async ({ page 
     const start = await gameState(page);
     expect(start.journey.remaining).toBeLessThan(3.5);
     await waitForState(page, (s) => s.state === 'Landed');
-    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, faults fixed and diagnostics stats, "Press R to fly again", timer reads LANDED');
+    await attachShot(page, testInfo, 'landed: dimmed ship, TOUCHDOWN title, oxygen / course / engine damage line, stats line, NEW BEST in cyan, FLY AGAIN (R) highlighted and MAIN MENU rows, timer reads LANDED');
     await page.keyboard.press('r');
     // The landing scenario applies again to the new run: 3 s from arrival.
     const again = await waitForState(page, (s) => s.state === 'Playing');
@@ -29,7 +29,7 @@ test('an unfixed breach vents the oxygen and ends the run', async ({ page }, tes
     expect(lost.stats.failure).toBe('HullBreach');
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'lost: red-tinted screen, OXYGEN DEPLETED title, survival time, "Press R to fly again"');
+    await attachShot(page, testInfo, 'lost: red-tinted screen, OXYGEN DEPLETED title, survival time and damage lines, NEW BEST, FLY AGAIN (R) and MAIN MENU rows');
   }
 });
 

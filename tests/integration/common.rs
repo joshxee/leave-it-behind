@@ -4,23 +4,31 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::window::PrimaryWindow;
+use leave_it_behind::menu::{Menu, Screen};
 use leave_it_behind::player::Player;
+use leave_it_behind::save::Storage;
 use leave_it_behind::ship::CameraRig;
 use leave_it_behind::{
-    ActiveScenario, AppState, FIXED_HZ, GamePlugin, Scenario, TestDeterminismPlugin,
+    ActiveScenario, AppState, FIXED_HZ, GamePlugin, Pause, Scenario, TestDeterminismPlugin,
 };
 
 /// Headless app with the full `GamePlugin`, deterministic time (one fixed
-/// tick per `update()`), and a fake 1280×720 primary window. Startup has not
-/// run yet.
+/// tick per `update()`), a fake 1280×720 primary window, and saves kept in
+/// memory. Startup has not run yet.
 ///
 /// `InputPlugin` is left out on purpose: tests press and clear keys themselves.
 pub fn test_app() -> App {
+    test_app_with_storage(Storage::memory())
+}
+
+/// [`test_app`] reading and writing saves in `storage` (see `save.rs`).
+pub fn test_app_with_storage(storage: Storage) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin))
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseScroll>()
+        .insert_resource(storage)
         .add_plugins((GamePlugin, TestDeterminismPlugin));
     app.world_mut().spawn((Window::default(), PrimaryWindow));
     app
@@ -35,8 +43,12 @@ pub fn test_app_with(scenario: Scenario) -> App {
     app
 }
 
-/// Runs frames until the game is in `AppState::Playing`.
+/// Boots straight into a flight, skipping the title screen as any scenario
+/// does (level one when no scenario is set).
 pub fn boot(app: &mut App) {
+    if !app.world().contains_resource::<ActiveScenario>() {
+        app.insert_resource(ActiveScenario(Scenario::Default));
+    }
     for _ in 0..3 {
         frame(app);
         if state(app) == AppState::Playing {
@@ -46,8 +58,35 @@ pub fn boot(app: &mut App) {
     panic!("game never reached AppState::Playing");
 }
 
+/// Boots as a player does: to the title screen.
+pub fn boot_to_menu(app: &mut App) {
+    for _ in 0..3 {
+        frame(app);
+        if state(app) == AppState::Menu {
+            return;
+        }
+    }
+    panic!("game never reached AppState::Menu");
+}
+
 pub fn state(app: &App) -> AppState {
     *app.world().resource::<State<AppState>>().get()
+}
+
+pub fn paused(app: &App) -> bool {
+    app.world()
+        .get_resource::<State<Pause>>()
+        .is_some_and(|p| *p.get() == Pause::Paused)
+}
+
+/// The screen on top of the menu stack.
+pub fn screen(app: &App) -> Option<Screen> {
+    app.world().resource::<Menu>().screen()
+}
+
+/// The highlighted row of the top screen.
+pub fn focus(app: &App) -> usize {
+    app.world().resource::<Menu>().top().map_or(0, |e| e.focus)
 }
 
 /// Runs one frame (one fixed tick), then clears just-pressed / just-released

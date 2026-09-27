@@ -7,8 +7,26 @@
   <title>Leave It Behind</title>
   <link rel="icon" href="data:,">
   <style>
+    @font-face {
+      font-family: "Super Indie";
+      src: url("assets/fonts/super-indie-font/SuperIndie-GOp7O.ttf") format("truetype");
+    }
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     #bevy-canvas { display: block; outline: none; }
+    /* Colours from src/palette.rs: VOID, UI_TEXT, UI_TITLE, UI_ACCENT, UI_DIM. */
+    #loading {
+      position: fixed; inset: 0; z-index: 5;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      background: #101c29; color: #e6eff1;
+      font-family: "Super Indie", system-ui, sans-serif;
+    }
+    #loading[hidden] { display: none; }
+    #loading .title { font-size: 56px; letter-spacing: 1px; color: #a0e0eb; }
+    #loading .bar { width: 420px; max-width: 80vw; height: 10px; border: 2px solid rgba(191, 208, 214, 0.55); }
+    #loading-fill { width: 0; height: 100%; background: #61bbd2; transition: width 0.15s linear; }
+    #loading.indeterminate #loading-fill { width: 30%; animation: sweep 1.2s ease-in-out infinite alternate; }
+    @keyframes sweep { from { margin-left: 0; } to { margin-left: 70%; } }
+    #loading-text { font-size: 18px; color: rgba(191, 208, 214, 0.8); }
     #crash-overlay {
       display: none; position: fixed; inset: 0; z-index: 10;
       align-items: center; justify-content: center; padding: 24px;
@@ -21,6 +39,11 @@
 
 <body>
   <canvas id="bevy-canvas" tabindex="0"></canvas>
+  <div id="loading" role="status" aria-live="polite">
+    <div class="title">LEAVE IT BEHIND</div>
+    <div class="bar"><div id="loading-fill"></div></div>
+    <div id="loading-text">Loading...</div>
+  </div>
   <div id="crash-overlay" role="alert">
     <div>
       <p>The game crashed. Version <span id="crash-version">unknown</span>. Please report this with a screenshot.</p>
@@ -51,12 +74,61 @@
     import './restart-audio-context.js'
     import init from './bevy_game.js'
 
-    init().catch((error) => {
-      if (!isControlFlowError(error)) {
-        window.showCrash(error && (error.stack || error));
-        throw error;
+    const loading = document.getElementById("loading");
+    const fill = document.getElementById("loading-fill");
+    const label = document.getElementById("loading-text");
+    const mb = (bytes) => (bytes / 1048576).toFixed(1);
+
+    // A compressed transfer reports the compressed size, so the count can
+    // pass it: then the bar just sweeps.
+    function showProgress(loaded, total) {
+      if (total > 0 && loaded <= total) {
+        fill.style.width = `${(100 * loaded / total).toFixed(1)}%`;
+        label.textContent = `Loading ${mb(loaded)} / ${mb(total)} MB`;
+      } else {
+        loading.classList.add("indeterminate");
+        label.textContent = `Loading ${mb(loaded)} MB`;
       }
-    });
+    }
+
+    // Fetches the game, counting bytes as they arrive.
+    async function fetchGame(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+      const total = Number(response.headers.get("Content-Length")) || 0;
+      if (!response.body) return response;
+      const reader = response.body.getReader();
+      let loaded = 0;
+      const counted = new ReadableStream({
+        async pull(controller) {
+          const { done, value } = await reader.read();
+          if (done) {
+            label.textContent = "Starting...";
+            controller.close();
+            return;
+          }
+          loaded += value.byteLength;
+          showProgress(loaded, total);
+          controller.enqueue(value);
+        },
+      });
+      return new Response(counted, { headers: { "Content-Type": "application/wasm" } });
+    }
+
+    // Bevy's event loop hands control back by throwing; either way the game
+    // is running (or has crashed) once init settles.
+    init({ module_or_path: fetchGame(new URL("bevy_game_bg.wasm", import.meta.url)) })
+      .catch((error) => {
+        if (!isControlFlowError(error)) {
+          window.showCrash(error && (error.stack || error));
+          throw error;
+        }
+      })
+      .finally(() => {
+        loading.hidden = true;
+        // Keys reach the game only while its canvas has focus.
+        document.getElementById("bevy-canvas").focus();
+      });
 
     function isControlFlowError(error) {
       return String(error && error.message).startsWith(

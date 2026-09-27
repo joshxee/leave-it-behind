@@ -12,9 +12,10 @@ use bevy::prelude::*;
 
 use super::{Fault, FaultKind};
 use crate::player::{InteractKind, InteractPressed, Interactable, Locked, Player, PlayerIntent};
+use crate::settings::Settings;
 use crate::shapes::{Shapes, at, rect};
 use crate::ship::layout;
-use crate::{AppState, GameRng, GameSet, RunSet, palette};
+use crate::{AppState, GameRng, GameSet, RunSet, not_paused, palette, running};
 
 /// Half-width of the centre band.
 pub const BAND_HALF: f32 = 0.4;
@@ -104,20 +105,15 @@ impl Plugin for DriftPlugin {
         app.init_resource::<Nav>()
             .add_systems(Startup, spawn_helm.in_set(GameSet::Input))
             .add_systems(OnEnter(AppState::Playing), reset_nav.in_set(RunSet::Spawn))
-            .add_systems(
-                FixedUpdate,
-                use_helm
-                    .in_set(GameSet::Act)
-                    .run_if(in_state(AppState::Playing)),
-            )
+            .add_systems(FixedUpdate, use_helm.in_set(GameSet::Act).run_if(running))
             .add_systems(
                 FixedUpdate,
                 (start_drift, steer)
                     .chain()
                     .in_set(GameSet::Simulate)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
-            .add_systems(Update, draw_nav.in_set(GameSet::Present));
+            .add_systems(Update, draw_nav.in_set(GameSet::Present).run_if(not_paused));
     }
 }
 
@@ -261,6 +257,7 @@ fn steer(
 fn draw_nav(
     nav: Res<Nav>,
     time: Res<Time>,
+    settings: Res<Settings>,
     faults: Query<&Fault>,
     mut parts: Query<(&NavPart, &mut Transform, &mut Sprite)>,
 ) {
@@ -276,10 +273,13 @@ fn draw_nav(
     for (part, mut transform, mut sprite) in &mut parts {
         match part {
             NavPart::Frame => {
-                sprite.color = if alarm && blink {
-                    palette::NAV_ALERT
-                } else {
-                    palette::NAV_FRAME
+                // Without flashing, the frame stays red instead of blinking.
+                sprite.color = match (alarm, blink) {
+                    (false, _) => palette::NAV_FRAME,
+                    (true, true) => palette::NAV_ALERT,
+                    (true, false) => {
+                        palette::NAV_FRAME.mix(&palette::NAV_ALERT, 1.0 - settings.flash_scale())
+                    }
                 };
             }
             NavPart::Marker => {

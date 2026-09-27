@@ -15,6 +15,7 @@ pub const LEVEL_ONE_SEED: u64 = 0x1EA7_0001;
 
 pub fn level_one() -> LevelDef {
     LevelDef {
+        id: "one".into(),
         name: "Level 1".into(),
         duration_secs: 270.0,
         seed: Some(LEVEL_ONE_SEED),

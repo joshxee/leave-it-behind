@@ -13,7 +13,7 @@ fn a_quiet_ship_raises_no_alarm() {
     run_frames(&mut app, secs(2.0));
     let a = alarm(&app);
     assert_eq!((a.active, a.level, a.jolt), (0, 0.0, 0.0));
-    assert_eq!(a.tint(1.0), 0.0);
+    assert_eq!(a.tint(1.0, 1.0), 0.0);
     assert_eq!(a.shake(), 0.0);
 }
 
@@ -28,7 +28,11 @@ fn a_new_fault_jolts_then_the_tint_deepens() {
     let later = alarm(&app);
     assert_eq!(later.jolt, 0.0);
     assert!(later.level > 0.5, "{later:?}");
-    let peak = |a: Alarm| (0..100).map(|i| a.tint(i as f32 * 0.1)).fold(0.0, f32::max);
+    let peak = |a: Alarm| {
+        (0..100)
+            .map(|i| a.tint(i as f32 * 0.1, 1.0))
+            .fold(0.0, f32::max)
+    };
     assert!(peak(later) > peak(start));
     assert!(later.shake() > 0.0);
 }

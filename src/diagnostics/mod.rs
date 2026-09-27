@@ -12,10 +12,11 @@ use crate::art::tiles::Tile;
 use crate::faults::bolts::Bolt;
 use crate::faults::{Fault, FaultKind};
 use crate::player::{Focus, InteractKind, InteractPressed, Interactable, Player};
+use crate::settings::Settings;
 use crate::shapes::at;
 use crate::ship::layout::{self, ship};
 use crate::ship::{RoomId, room_frame, show_tile, z};
-use crate::{AppState, GameSet, RunSet, palette};
+use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
 
 /// Seconds between opening the screen and the faults appearing.
 pub const SCAN_SECS: f32 = 1.0;
@@ -156,18 +157,14 @@ impl Plugin for DiagnosticsPlugin {
             .add_systems(OnEnter(AppState::Playing), reset.in_set(RunSet::Spawn))
             .add_systems(
                 FixedUpdate,
-                use_console
-                    .in_set(GameSet::Act)
-                    .run_if(in_state(AppState::Playing)),
+                use_console.in_set(GameSet::Act).run_if(running),
             )
-            .add_systems(
-                FixedUpdate,
-                scan.in_set(GameSet::Simulate)
-                    .run_if(in_state(AppState::Playing)),
-            )
+            .add_systems(FixedUpdate, scan.in_set(GameSet::Simulate).run_if(running))
             .add_systems(
                 Update,
-                (draw_overlay, light_console).in_set(GameSet::Present),
+                (draw_overlay, light_console)
+                    .in_set(GameSet::Present)
+                    .run_if(not_paused),
             );
     }
 }
@@ -367,6 +364,7 @@ fn draw_overlay(
     map: Query<Entity, With<DiagMap>>,
     markers: Query<Entity, With<DiagMarker>>,
     state: Res<State<AppState>>,
+    settings: Res<Settings>,
 ) {
     let open = diag.view != DiagView::Closed && *state.get() == AppState::Playing;
     for mut v in &mut overlay {
@@ -398,7 +396,8 @@ fn draw_overlay(
             let Ok(map) = map.single() else {
                 return;
             };
-            let pulse = 0.55 + 0.45 * (time.elapsed_secs() * 6.0).sin().abs();
+            let wave = (time.elapsed_secs() * 6.0).sin().abs();
+            let pulse = 1.0 - 0.45 * settings.flash_scale() * (1.0 - wave);
             for point in readings.iter().flat_map(|r| r.points.iter()) {
                 let p = to_map(*point);
                 commands.spawn((

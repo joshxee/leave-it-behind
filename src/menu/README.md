@@ -1,0 +1,12 @@
+# menu
+
+Menus and pausing: the title card, main menu, how to play, settings, the pause menu, the end-of-flight screen and confirm dialogs. Placeholder art (rows with palette colors), ASCII text in the game font.
+
+- **Flow:** boot → title card ("CLICK OR PRESS ANY KEY", once per launch, before the first flight) → main menu: PLAY, HOW TO PLAY, SETTINGS, QUIT (desktop only). Esc or P pauses a flight: RESUME, RESTART, HOW TO PLAY, SETTINGS, MAIN MENU, QUIT (desktop only). Losing window focus pauses too (a setting). Landing or losing opens the end screen: the flight's damage, the level's best, FLY AGAIN (R) and MAIN MENU. Restart, Main menu and Quit mid-flight, and Reset progress, ask first, with BACK highlighted.
+- **Model:** `Menu { stack, title_done }` holds the screens on show; the top one is drawn. `Screen`: `Title`, `Main`, `HowToPlay`, `Settings`, `Pause`, `End`, `Confirm(Confirm)`. `screens::content(screen, &Ctx)` describes a screen as plain data (title, lines, `Item`s, footer); `MenuCtx` builds the `Ctx`. `view` spawns it (`MenuRoot` at `GlobalZIndex(40)`, `MenuRow`, `StepArrow`) and moves the highlight. Backdrop: opaque on the menus, the ship dimmed behind pause and end screens.
+- **Input:** `menu_keys`: Up/Down or W/S move, Left/Right or A/D change a setting, Enter/Space activate (a setting cycles), Esc backs out (`escape_action`), P resumes, R flies again. `menu_mouse`: hovering highlights a row (only when the hover starts, so a resting cursor never fights the keys), a press and release on a row clicks it, `<` and `>` step a setting. Both write `MenuAction`s; `apply_actions` is the only place they change the game.
+- **Pausing:** `Pause::Paused` is a sub-state of `Playing` (`state.rs`). `pause_keys` (Esc, P), `pause_on_focus_loss` (`WindowFocused`, if `Settings::pause_unfocused`). Resuming closes the menu and clears `PlayerIntent`, so nothing pressed before or during the pause reaches the flight.
+- **Desktop only:** QUIT (`AppExit`). A web page cannot close its tab, so the web build has no Quit; MAIN MENU is the way out of a flight.
+- **Smoke:** under the `smoke` feature, `ci/smoke.ron`'s `Custom("play")` starts a flight from the title.
+- **Tests:** unit tests in `screens.rs`; integration tests in `tests/integration/menu.rs`; e2e in `e2e/specs/menus.spec.ts` and `e2e/specs/boot.spec.ts`.
+- **Scenarios:** plain boot (title and main menu), `paused`, `settings`, `landing` and `breach_critical` (end screen).

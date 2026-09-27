@@ -80,9 +80,10 @@ if in_scope rust native; then
 fi
 
 if in_scope native; then
-  rm -f test-reports/smoke/smoke.png
+  rm -f test-reports/smoke/smoke.png test-reports/smoke/title.png
   run smoke scripts/smoke-native.sh
   [ -f test-reports/smoke/smoke.png ] && cp test-reports/smoke/smoke.png "$DIR/screenshots/smoke-native.png"
+  [ -f test-reports/smoke/title.png ] && cp test-reports/smoke/title.png "$DIR/screenshots/smoke-native-title.png"
 fi
 
 if in_scope web; then

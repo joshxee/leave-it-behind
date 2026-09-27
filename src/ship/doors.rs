@@ -13,7 +13,7 @@ use crate::art::tiles::{Tile, local_rect};
 use crate::art::{Art, TILE};
 use crate::player::Player;
 use crate::shapes::at;
-use crate::{AppState, GameSet, RunSet};
+use crate::{AppState, GameSet, RunSet, running};
 
 /// A door opens when the engineer is this close to its centre. Far enough
 /// that a running engineer never waits for it.
@@ -116,9 +116,7 @@ impl Plugin for DoorsPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                operate_doors
-                    .in_set(GameSet::Move)
-                    .run_if(in_state(AppState::Playing)),
+                operate_doors.in_set(GameSet::Move).run_if(running),
             )
             .add_systems(Update, draw_doors.in_set(GameSet::Present));
     }

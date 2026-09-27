@@ -13,7 +13,7 @@ use crate::shapes::at;
 use crate::ship::doors::{Door, door_assist};
 use crate::ship::layout::{self, move_circle};
 use crate::ship::{CameraRig, Colliders, cursor_to_world};
-use crate::{AppState, GameSet, RunEntity, RunSet};
+use crate::{AppState, GameSet, RunEntity, RunSet, running};
 
 /// World units per second.
 pub const PLAYER_SPEED: f32 = 280.0;
@@ -96,18 +96,13 @@ impl Plugin for PlayerPlugin {
                 OnEnter(AppState::Playing),
                 spawn_player.in_set(RunSet::Spawn),
             )
-            .add_systems(
-                Update,
-                read_input
-                    .in_set(GameSet::Input)
-                    .run_if(in_state(AppState::Playing)),
-            )
+            .add_systems(Update, read_input.in_set(GameSet::Input).run_if(running))
             .add_systems(
                 FixedUpdate,
                 (move_player, face_aim, update_focus, send_interact)
                     .chain()
                     .in_set(GameSet::Move)
-                    .run_if(in_state(AppState::Playing)),
+                    .run_if(running),
             )
             .add_plugins(sprite::EngineerSpritePlugin);
     }

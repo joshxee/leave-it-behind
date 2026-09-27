@@ -14,12 +14,12 @@ use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
 use super::{Facing, Locked, Movement, Player};
-use crate::GameSet;
 use crate::art::Art;
 use crate::art::engineer::{ANCHOR, Action, contact, facing};
 use crate::faults::drift::Nav;
 use crate::ship::layout;
 use crate::tools::{Tool, ToolBelt, ToolState, WRENCH_TURN_SECS};
+use crate::{GameSet, not_paused};
 
 /// Most the sprite leans toward a snapped bolt, in world units.
 pub const LEAN_MAX: f32 = 12.0;
@@ -92,7 +92,7 @@ pub struct EngineerSpritePlugin;
 
 impl Plugin for EngineerSpritePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, animate.in_set(GameSet::Present));
+        app.add_systems(Update, animate.in_set(GameSet::Present).run_if(not_paused));
     }
 }
 

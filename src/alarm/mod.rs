@@ -5,12 +5,17 @@
 //! - A pulsing red tint while any fault is active, deeper and faster as the
 //!   most urgent fault's clock runs down.
 //! - Growing shake over the last half of the most urgent fault's clock.
+//!
+//! The screen shake and alarm flashing settings scale the shake and the
+//! pulse. With flashing off the tint holds steady, still deepening with
+//! urgency, so the warning is never lost.
 
 use bevy::prelude::*;
 
 use crate::faults::Fault;
+use crate::settings::Settings;
 use crate::ship::CameraRig;
-use crate::{AppState, GameSet, RunSet, palette};
+use crate::{AppState, GameSet, RunSet, not_paused, palette, running};
 
 /// Seconds a new fault's jolt lasts.
 pub const JOLT_SECS: f32 = 0.6;
@@ -37,12 +42,14 @@ pub struct Alarm {
 }
 
 impl Alarm {
-    /// Tint alpha at time `t`: a pulse whose depth and rate grow with urgency.
-    pub fn tint(&self, t: f32) -> f32 {
+    /// Tint alpha at time `t`: a pulse whose depth and rate grow with
+    /// urgency. `flash` (0 to 1) scales the pulse; at 0 the tint is steady.
+    pub fn tint(&self, t: f32, flash: f32) -> f32 {
         if self.active == 0 {
             return 0.0;
         }
-        let pulse = 0.5 + 0.5 * (t * (3.0 + 5.0 * self.level)).sin();
+        let wave = (t * (3.0 + 5.0 * self.level)).sin();
+        let pulse = 0.5 + 0.5 * wave * flash.clamp(0.0, 1.0);
         let depth = MIN_TINT + (MAX_TINT - MIN_TINT) * self.level.powf(1.5);
         depth * (0.65 + 0.35 * pulse)
     }
@@ -67,11 +74,14 @@ impl Plugin for AlarmPlugin {
             .add_systems(OnEnter(AppState::Playing), reset.in_set(RunSet::Spawn))
             .add_systems(
                 FixedUpdate,
-                update_alarm
-                    .in_set(GameSet::Resolve)
-                    .run_if(in_state(AppState::Playing)),
+                update_alarm.in_set(GameSet::Resolve).run_if(running),
             )
-            .add_systems(Update, (shake_camera, tint_screen).in_set(GameSet::Present));
+            .add_systems(
+                Update,
+                (shake_camera, tint_screen)
+                    .in_set(GameSet::Present)
+                    .run_if(not_paused),
+            );
     }
 }
 
@@ -123,11 +133,12 @@ fn jitter(t: f32) -> Vec2 {
 fn shake_camera(
     alarm: Res<Alarm>,
     time: Res<Time>,
+    settings: Res<Settings>,
     state: Res<State<AppState>>,
     mut rigs: Query<&mut CameraRig>,
 ) {
     let amplitude = if *state.get() == AppState::Playing {
-        alarm.shake()
+        alarm.shake() * settings.shake_scale()
     } else {
         0.0
     };
@@ -139,11 +150,12 @@ fn shake_camera(
 fn tint_screen(
     alarm: Res<Alarm>,
     time: Res<Time>,
+    settings: Res<Settings>,
     state: Res<State<AppState>>,
     mut tints: Query<&mut BackgroundColor, With<AlarmTint>>,
 ) {
     let alpha = match state.get() {
-        AppState::Playing => alarm.tint(time.elapsed_secs()),
+        AppState::Playing => alarm.tint(time.elapsed_secs(), settings.flash_scale()),
         AppState::Lost => LOST_TINT,
         _ => 0.0,
     };
@@ -159,7 +171,7 @@ mod tests {
     #[test]
     fn quiet_ship_has_no_cues() {
         let alarm = Alarm::default();
-        assert_eq!(alarm.tint(1.3), 0.0);
+        assert_eq!(alarm.tint(1.3, 1.0), 0.0);
         assert_eq!(alarm.shake(), 0.0);
     }
 
@@ -173,12 +185,28 @@ mod tests {
         let dire = Alarm { level: 0.9, ..calm };
         let peak = |a: Alarm| {
             (0..200)
-                .map(|i| a.tint(i as f32 * 0.05))
+                .map(|i| a.tint(i as f32 * 0.05, 1.0))
                 .fold(0.0, f32::max)
         };
         assert!(peak(calm) > 0.0);
         assert!(peak(dire) > 2.0 * peak(calm));
         assert!(peak(dire) <= MAX_TINT);
+    }
+
+    #[test]
+    fn without_flashing_the_tint_holds_steady_but_still_deepens() {
+        let calm = Alarm {
+            level: 0.1,
+            active: 1,
+            jolt: 0.0,
+        };
+        let dire = Alarm { level: 0.9, ..calm };
+        let steady = |a: Alarm| {
+            let samples: Vec<f32> = (0..50).map(|i| a.tint(i as f32 * 0.1, 0.0)).collect();
+            assert!(samples.iter().all(|&s| (s - samples[0]).abs() < 1e-6));
+            samples[0]
+        };
+        assert!(steady(dire) > 2.0 * steady(calm));
     }
 
     #[test]

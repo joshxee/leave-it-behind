@@ -19,15 +19,18 @@
 - The ship is data: the ASCII map `SHIP` in `src/ship/map.rs` (legend and rules in its docs,
   `src/ship/README.md`). Rooms, walls, doors, colliders and fault sites are all derived from it.
 - One plugin per feature module, each with a `README.md`: `ship/`, `player/`, `tools/`,
-  `faults/`, `level/`, `diagnostics/`, `alarm/`, `ui/`, `scenarios/`.
-- Infrastructure: `state.rs` (`AppState`, `GameSet` order, `RunSet`, `RunEntity`), `rng.rs` (`GameRng`),
+  `faults/`, `level/`, `diagnostics/`, `alarm/`, `ui/`, `menu/`, `settings/`, `save/`, `scenarios/`.
+- Flow: `Boot` → `Menu` (title, main menu; `src/menu/README.md`) → `Playing` → `Landed`/`Lost`.
+  Pausing is the `Pause` sub-state of `Playing`, so it never restarts the run.
+- Infrastructure: `state.rs` (`AppState`, `Pause`, `running`/`not_paused`, `GameSet` order, `RunSet`,
+  `RunEntity`), `rng.rs` (`GameRng`),
   `art/` (atlases, tile and engineer data from the packs' manifests: `src/art/README.md`),
   `shapes.rs` (placeholder circle/ring sprites), `palette.rs`, `determinism.rs`
   (`TestDeterminismPlugin`), `version.rs`, `e2e_bridge.rs` (wasm + `e2e` only).
 - **New feature plugin:** create `src/<feature>/mod.rs` with `pub struct <Feature>Plugin`,
   add `pub mod <feature>;` in `lib.rs`, add the plugin to the tuple in
   `GamePlugin::build`, put systems in a `GameSet` (gameplay in `FixedUpdate`,
-  `.run_if(in_state(AppState::Playing))`), and write `src/<feature>/README.md`
+  `.run_if(running)`; in-world animation `.run_if(not_paused)`), and write `src/<feature>/README.md`
   (purpose, components/resources, test module, scenarios).
 - Release process: `docs/RELEASING.md`.
 
@@ -84,6 +87,8 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
 - Randomness only through `ResMut<GameRng>`. Never `rand::rng()` / `thread_rng()`.
 - Never add a top-level file under `tests/`. Add a module to `tests/integration/main.rs` (`TESTING.md`).
 - Every new game situation gets a scenario in `src/scenarios/`, listed in the feature's `README.md`.
+- Only settings and progress are saved (`src/save/README.md`). Tests keep saves in memory; never
+  point a test at a real save folder.
 - `ci/budgets.env` (`WASM_BUDGET_KB`) is a reviewed limit. Never raise it to pass a check.
 - Screenshot baselines are Linux-only and approved by a human or the primary model (`TESTING.md`).
 - The `e2e` test bridge must never ship. `build-web.sh` fails non-e2e builds containing it.
@@ -97,6 +102,8 @@ scripts/test-all.sh [--scope all|rust|native|web]   # everything -> test-reports
   closed ones (`Door::leaf`), as `player::move_player` does.
 - `Anchor` (sprite pivot) is `bevy::sprite::Anchor`, not in the prelude. The engineer's pivot is
   its feet (`art::engineer::ANCHOR`): its transform is the ground point, not the sprite centre.
+- Players boot to the title; any scenario (and the test helper `boot`) skips it. Use `boot_to_menu`
+  natively, or `openGame(page)` without a scenario on the web, to start at the title.
 - `MinimalPlugins` has no window, input, assets, or rendering: `test_app()` adds input
   resources and a fake `Window`. Asset-dependent plugins skip themselves without `AssetServer`.
 - In a frame, `FixedUpdate` runs before `Update`, so input read in `Update` applies next frame.

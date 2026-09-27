@@ -11,13 +11,15 @@ test('release build runs for 20s without crashing @release-smoke', async ({ page
     await page.goto('/index.html');
     await page.waitForTimeout(20_000);
     await expect(page.locator('#crash-overlay')).toBeHidden();
+    // The loading screen goes once the game is running.
+    await expect(page.locator('#loading')).toBeHidden();
     expect(errors).toEqual([]);
     shot = await page.locator('#bevy-canvas').screenshot();
     expect(await distinctColors(page, shot, 2), 'canvas should not be a single solid color').toBeGreaterThan(1);
   } finally {
     const path = testInfo.outputPath('release-smoke.png');
     writeFileSync(path, shot ?? (await page.screenshot({ fullPage: true })));
-    await testInfo.attach('release-smoke: canvas after 20s, game rendering (not a solid color), no crash overlay', {
+    await testInfo.attach('release-smoke: canvas after 20s, the title screen (LEAVE IT BEHIND, CLICK OR PRESS ANY KEY), no loading or crash overlay', {
       path,
       contentType: 'image/png',
     });

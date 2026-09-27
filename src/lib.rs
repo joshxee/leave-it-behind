@@ -14,10 +14,13 @@ pub mod diagnostics;
 mod e2e_bridge;
 pub mod faults;
 pub mod level;
+pub mod menu;
 pub mod palette;
 pub mod player;
 pub mod rng;
+pub mod save;
 pub mod scenarios;
+pub mod settings;
 pub mod shapes;
 pub mod ship;
 pub mod state;
@@ -28,7 +31,7 @@ pub mod version;
 pub use determinism::TestDeterminismPlugin;
 pub use rng::GameRng;
 pub use scenarios::{ActiveScenario, Scenario};
-pub use state::{AppState, GameSet, RunEntity, RunSet};
+pub use state::{AppState, GameSet, Pause, RunEntity, RunSet, not_paused, running};
 
 /// Canvas and window size in logical pixels. Also the Playwright viewport.
 pub const WINDOW_SIZE: UVec2 = UVec2::new(1280, 720);
@@ -44,6 +47,8 @@ impl Plugin for GamePlugin {
             .add_plugins((
                 state::StatePlugin,
                 rng::RngPlugin,
+                settings::SettingsPlugin,
+                save::SavePlugin,
                 shapes::ShapesPlugin,
                 art::ArtPlugin,
                 ship::ShipPlugin,
@@ -51,9 +56,12 @@ impl Plugin for GamePlugin {
                 tools::ToolsPlugin,
                 faults::FaultsPlugin,
                 level::LevelPlugin,
+            ))
+            .add_plugins((
                 diagnostics::DiagnosticsPlugin,
                 alarm::AlarmPlugin,
                 ui::UiPlugin,
+                menu::MenuPlugin,
                 scenarios::ScenarioPlugin,
                 version::VersionPlugin,
             ));

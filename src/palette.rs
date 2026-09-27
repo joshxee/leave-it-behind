@@ -63,6 +63,9 @@ pub const MAP_HULL: Color = JOINT_SHADOW;
 pub const MAP_ROOM: Color = STEEL_SHADOW;
 pub const MAP_PLAYER: Color = VISOR_GLINT;
 pub const DIAG_FRAME: Color = VISOR_MID;
+/// A menu row, and the highlighted one. Nearly opaque: legible over the ship.
+pub const UI_ROW: Color = Color::srgba_u8(27, 45, 62, 242);
+pub const UI_ROW_FOCUS: Color = Color::srgba_u8(28, 88, 123, 242);
 
 #[cfg(test)]
 mod tests {
@@ -96,6 +99,8 @@ mod tests {
             BREACH_AIR,
             UI_DIM,
             UI_PANEL,
+            UI_ROW,
+            UI_ROW_FOCUS,
         ];
         for c in decorative {
             assert!(cold(c), "{c:?} is not a cold colour");
