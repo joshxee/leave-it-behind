@@ -72,10 +72,11 @@ test('a first flight waits for the pre-flight check, and only the first', async 
     const again = await playFromTheTitle(page);
     expect(again.journey.launched).toBe(true);
     expect(again.coach.lines).toEqual([]);
-    await waitForState(page, (s) => s.journey.elapsed > 0.5);
+    // The clock rounds up: it reads 4:29 once 1 s has gone.
+    await waitForState(page, (s) => s.journey.elapsed > 1.5);
     expect(errors).toEqual([]);
   } finally {
-    await attachShot(page, testInfo, 'second-flight: quarters with the countdown running below 4:30, no coaching panel');
+    await attachShot(page, testInfo, 'second-flight: quarters with no coaching panel, ARRIVAL IN already below 4:30');
   }
 });
 
