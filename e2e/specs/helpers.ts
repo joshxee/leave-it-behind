@@ -73,6 +73,8 @@ export type BevyState = {
   snap: boolean;
   turning: boolean;
   taping: boolean;
+  /** Where tape goes on this tick: the wall point and its face's normal (out of the wall), or null. */
+  tapeContact: { x: number; y: number; nx: number; ny: number } | null;
   strips: number;
   journey: { elapsed: number; remaining: number; duration: number };
   faults: FaultState[];

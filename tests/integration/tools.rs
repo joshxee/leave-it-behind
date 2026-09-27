@@ -3,7 +3,10 @@ use leave_it_behind::Scenario;
 use leave_it_behind::faults::bolts::Bolt;
 use leave_it_behind::faults::{Fault, Site};
 use leave_it_behind::level::{Journey, RunStats};
+use leave_it_behind::player::PLAYER_RADIUS;
 use leave_it_behind::ship::RoomId;
+use leave_it_behind::ship::depth::wall_art_point;
+use leave_it_behind::ship::layout::WALL_HALF;
 use leave_it_behind::tools::{
     TAPE_CAPACITY, TapeStrip, Tool, ToolBelt, ToolState, WRENCH_TURN_SECS,
 };
@@ -182,6 +185,50 @@ fn holding_tape_on_a_breach_seals_it_in_about_three_seconds() {
             .iter(app.world())
             .all(|s| s.rect.unwrap().min.x == 160.0),
         "each strip reaches its fully applied frame"
+    );
+}
+
+#[test]
+fn tape_pressed_deep_into_the_hull_goes_on_the_inside() {
+    let mut app = test_app_with(Scenario::Breach);
+    let site = Site::AirlockPortAft;
+    // Right up against the wall: the roll's edge is past the wall's middle,
+    // nearer its outside face than its inside one.
+    put_player(&mut app, site.pos() + site.normal() * (PLAYER_RADIUS + 1.0));
+    frame(&mut app);
+    aim_at(&mut app, site.pos());
+    run_frames(&mut app, 2);
+    let tip = app.world().resource::<ToolState>().tip;
+    assert!((site.pos() - tip).dot(site.normal()) > WALL_HALF, "{tip}");
+    mouse_down(&mut app);
+    let mut ticks = 0;
+    let frames = run_until(&mut app, secs(5.0), |app| {
+        if let Some(c) = app.world().resource::<ToolState>().taping {
+            ticks += 1;
+            assert!(c.point.distance(site.pos()) < 1e-3, "tape went on at {c:?}");
+            assert_eq!(c.normal, site.normal(), "tape on the outside of the hull");
+        }
+        faults(app).is_empty()
+    });
+    mouse_up(&mut app);
+    assert!(ticks > 0);
+    let seconds = frames as f32 / 60.0;
+    assert!((2.9..=3.3).contains(&seconds), "took {seconds}s");
+    assert_eq!(app.world().resource::<RunStats>().fixed, 1);
+    // Every strip is drawn over the hole (the same wall-face point as the
+    // breach art), give or take its jitter: 6 along the wall, 3 across.
+    let hole = wall_art_point(site.pos(), site.normal());
+    let mut strips = app
+        .world_mut()
+        .query_filtered::<&Transform, With<TapeStrip>>();
+    let offsets: Vec<f32> = strips
+        .iter(app.world())
+        .map(|t| t.translation.truncate().distance(hole))
+        .collect();
+    assert!(offsets.len() >= 5, "{offsets:?}");
+    assert!(
+        offsets.iter().all(|d| *d < 8.0),
+        "strips off the hole: {offsets:?}"
     );
 }
 

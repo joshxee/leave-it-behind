@@ -118,46 +118,71 @@ pub struct WallContact {
     pub normal: Vec2,
 }
 
-/// The wall surface point nearest `p`, if within `max_dist`. A point inside
-/// a wall snaps to that wall's nearest face.
-pub fn wall_contact(p: Vec2, max_dist: f32, walls: &[Rect]) -> Option<WallContact> {
+/// Where a tool held out from `from` (a point in the open: the engineer's
+/// feet) to `tip` touches a wall. A tip pressed into a wall, or through it,
+/// touches where the reach first meets the wall: always the face on the
+/// holder's side, never the outside of the hull or the next room's side. A
+/// tip in the open touches the nearest wall surface within `max_dist`.
+pub fn wall_contact(from: Vec2, tip: Vec2, max_dist: f32, walls: &[Rect]) -> Option<WallContact> {
+    let first = walls
+        .iter()
+        .filter_map(|r| entry(from, tip, *r))
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    if let Some((t, normal)) = first {
+        return Some(WallContact {
+            point: from.lerp(tip, t),
+            normal,
+        });
+    }
     let mut best: Option<(f32, WallContact)> = None;
     for r in walls {
-        let closest = p.clamp(r.min, r.max);
-        let d = p - closest;
-        let (dist, contact) = if d.length_squared() > 1e-8 {
-            let dist = d.length();
-            (
+        let closest = tip.clamp(r.min, r.max);
+        let d = tip - closest;
+        let dist = d.length();
+        // A tip in a wall the reach never entered: the holder is in it too,
+        // so there is no side to touch.
+        if dist > 1e-6 && dist <= max_dist && best.is_none_or(|(b, _)| dist < b) {
+            best = Some((
                 dist,
                 WallContact {
                     point: closest,
                     normal: d / dist,
                 },
-            )
-        } else {
-            let faces = [
-                (p.x - r.min.x, Vec2::new(r.min.x, p.y), Vec2::NEG_X),
-                (r.max.x - p.x, Vec2::new(r.max.x, p.y), Vec2::X),
-                (p.y - r.min.y, Vec2::new(p.x, r.min.y), Vec2::NEG_Y),
-                (r.max.y - p.y, Vec2::new(p.x, r.max.y), Vec2::Y),
-            ];
-            let face = faces
-                .iter()
-                .min_by(|a, b| a.0.total_cmp(&b.0))
-                .expect("four faces");
-            (
-                0.0,
-                WallContact {
-                    point: face.1,
-                    normal: face.2,
-                },
-            )
-        };
-        if dist <= max_dist && best.is_none_or(|(b, _)| dist < b) {
-            best = Some((dist, contact));
+            ));
         }
     }
     best.map(|(_, c)| c)
+}
+
+/// How far along the segment from `a` to `b` (0 to 1) it first enters `r`,
+/// and the normal of the face it enters through. `None` if it misses `r`,
+/// stops short of it or starts inside it.
+fn entry(a: Vec2, b: Vec2, r: Rect) -> Option<(f32, Vec2)> {
+    let mut enter = (f32::NEG_INFINITY, Vec2::ZERO);
+    let mut leave = f32::INFINITY;
+    for axis in [Vec2::X, Vec2::Y] {
+        let (start, step) = (a.dot(axis), (b - a).dot(axis));
+        let (lo, hi) = (r.min.dot(axis), r.max.dot(axis));
+        if step.abs() < 1e-6 {
+            // Parallel to these faces: it has to run between them.
+            if start < lo || start > hi {
+                return None;
+            }
+            continue;
+        }
+        let (near, far, normal) = if step > 0.0 {
+            ((lo - start) / step, (hi - start) / step, -axis)
+        } else {
+            ((hi - start) / step, (lo - start) / step, axis)
+        };
+        if near > enter.0 {
+            enter = (near, normal);
+        }
+        leave = leave.min(far);
+    }
+    let (t, normal) = enter;
+    // A tip resting exactly on the face still touches it.
+    ((0.0..=1.0 + 1e-4).contains(&t) && t <= leave).then_some((t, normal))
 }
 
 #[cfg(test)]
@@ -271,15 +296,60 @@ mod tests {
     }
 
     #[test]
-    fn contact_inside_a_wall_snaps_to_the_inner_face() {
+    fn a_tip_short_of_a_wall_touches_its_face_within_reach() {
         let mark = ship().wall_mark('7').expect("a breach point");
-        let c = wall_contact(mark.point - mark.normal * 4.0, 16.0, &walls()).unwrap();
+        let from = mark.point + mark.normal * 40.0;
+        let c = wall_contact(from, mark.point + mark.normal * 10.0, 16.0, &walls()).unwrap();
         assert!(c.point.distance(mark.point) < 1e-3, "{c:?}");
         assert_eq!(c.normal, mark.normal);
+        assert!(wall_contact(from, mark.point + mark.normal * 20.0, 16.0, &walls()).is_none());
+    }
+
+    #[test]
+    fn a_reach_into_the_hull_never_touches_its_outside() {
+        let walls = walls();
+        // Breach points sit on hull walls: space is on the far side.
+        for mark in ('1'..='9').filter_map(|m| ship().wall_mark(m)) {
+            let from = mark.point + mark.normal * (R + 10.0);
+            let along = mark.normal.perp();
+            // Past the wall's centre line (nearer the outside), and through it.
+            for depth in [0.0, 4.0, 16.0, 23.0, 40.0] {
+                for lean in [-15.0, 0.0, 15.0] {
+                    let tip = mark.point - mark.normal * depth + along * lean;
+                    let c = wall_contact(from, tip, 14.0, &walls).expect("touches the wall");
+                    assert_eq!(c.normal, mark.normal, "{mark:?} {depth} {lean}");
+                    assert!(
+                        (c.point - mark.point).dot(mark.normal).abs() < 1e-3,
+                        "{mark:?} {depth} {lean}: {c:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_reach_into_a_wall_between_rooms_stays_on_its_side() {
+        let walls = walls();
+        for door in ship().doors().into_iter().filter(|d| !d.locked) {
+            let across = if door.across_x { Vec2::Y } else { Vec2::X };
+            // One cell along the wall from the door, from either room.
+            let wall = door.center + across.perp() * 64.0;
+            for side in [across, -across] {
+                let from = wall + side * (WALL_HALF + R + 10.0);
+                let tip = wall - side * (WALL_HALF - 4.0);
+                let c = wall_contact(from, tip, 14.0, &walls).expect("touches the wall");
+                assert_eq!(c.normal, side, "{door:?}");
+                assert!(
+                    ((c.point - wall).dot(side) - WALL_HALF).abs() < 1e-3,
+                    "{c:?}"
+                );
+            }
+        }
     }
 
     #[test]
     fn no_contact_in_the_middle_of_a_room() {
-        assert!(wall_contact(RoomId::Hull.center(), 16.0, &walls()).is_none());
+        let c = RoomId::Hull.center();
+        assert!(wall_contact(c, c + Vec2::new(30.0, 0.0), 16.0, &walls()).is_none());
     }
 }
