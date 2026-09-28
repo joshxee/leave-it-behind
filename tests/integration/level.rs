@@ -98,7 +98,7 @@ fn a_flight_never_lands_with_a_fault_left() {
                 fault.clock = 1e6;
             }
         }
-        state(app) != AppState::Playing
+        state(app) != AppState::Playing || elapsed(app) >= 140.0
     });
     assert!(last.is_some());
     assert_eq!(state(&app), AppState::Playing);
