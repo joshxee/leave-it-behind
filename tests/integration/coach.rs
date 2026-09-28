@@ -143,7 +143,8 @@ fn walking_away_mid_scan_keeps_the_flight_waiting() {
 #[test]
 fn each_kind_of_fault_gets_a_tip_the_first_time_only() {
     // Level-design check over level one: every fault is fixed 15 s after it
-    // starts (directly, as in level.rs). Records the panel as each starts.
+    // starts (directly, as in level.rs), so the flight lands. Records the
+    // panel as each starts.
     let mut app = test_app_with(Scenario::FirstFlight);
     do_the_preflight_check(&mut app);
     let mut known: Vec<Entity> = Vec::new();
@@ -164,9 +165,9 @@ fn each_kind_of_fault_gets_a_tip_the_first_time_only() {
             let lines = panel(app);
             starts.push((elapsed(app), kind, lines));
         }
-        elapsed(app) >= 130.0
+        state(app) != AppState::Playing
     });
-    assert_eq!(state(&app), AppState::Playing);
+    assert_eq!(state(&app), AppState::Landed);
     assert_eq!(starts.len(), 4, "{starts:?}");
     let tip = |kind| vec![Tip::for_fault(kind).text().to_string()];
     for (at, kind, lines) in &starts[..3] {

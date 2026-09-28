@@ -6,6 +6,7 @@ use leave_it_behind::faults::{Fault, Site, fault_bundle};
 use leave_it_behind::level::campaign::level;
 use leave_it_behind::level::{CurrentLevel, FaultPlan, MAX_FLIGHT_SECS};
 use leave_it_behind::menu::Screen;
+use leave_it_behind::scenarios::ActiveScenario;
 use leave_it_behind::upgrades::{Upgrade, Upgrades};
 use leave_it_behind::{AppState, Scenario};
 
@@ -44,6 +45,8 @@ fn landed() -> App {
 #[test]
 fn landing_continues_to_the_upgrades_then_the_next_level() {
     let mut app = landed();
+    // The scenario applies to every run: level two flies as it is.
+    app.world_mut().remove_resource::<ActiveScenario>();
     // CONTINUE is highlighted.
     assert_eq!(focus(&app), 0);
     key(&mut app, KeyCode::Enter);

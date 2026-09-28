@@ -263,12 +263,20 @@ export async function step(page: Page, n: number) {
   await page.waitForFunction((t) => (window.__bevyState?.tick ?? 0) >= t && window.__bevyState?.frozen, target);
 }
 
+/** Longest screenshot description `attachShot` takes. */
+const MAX_SHOT_NAME = 200;
+
 /**
  * Attaches a screenshot to the report, pass or fail. `name` is
  * "<label>: <what the screenshot should show>"; the report's screenshot
  * index uses it verbatim.
  */
 export async function attachShot(page: Page, testInfo: TestInfo, name: string, canvasOnly = true) {
+  // Playwright names the attachment file after `name` (plus a 45-character hash
+  // and extension); past 255 bytes the copy fails with ENAMETOOLONG.
+  if (name.length > MAX_SHOT_NAME) {
+    throw new Error(`attachShot name is ${name.length} characters (max ${MAX_SHOT_NAME}): ${name}`);
+  }
   // Written to a file (not attached as a body) so the JSON results carry a path for REPORT.md.
   const label = name.split(':')[0].trim().replace(/[^\w-]+/g, '_');
   const path = testInfo.outputPath(`${label}.png`);
