@@ -82,7 +82,7 @@ jobs:
       - name: Package as a zip (index.html at the zip root, as itch requires)
         working-directory: ./wasm
         run: zip --recurse-paths ../${{ env.binary }}.zip . -x '.gitkeep'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ env.binary }}.zip
           name: html5
@@ -110,7 +110,7 @@ jobs:
           cp target/x86_64-pc-windows-msvc/release/${{ env.binary }}.exe windows/
           scripts/stage-assets.sh windows/assets
       - run: Compress-Archive -Path windows/* -DestinationPath ${{ env.binary }}.zip
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ env.binary }}.zip
           name: windows
@@ -150,7 +150,7 @@ jobs:
           cp target/${{ matrix.target }}/release/${{ env.binary }} ${{ env.binary }}.app/Contents/MacOS/
           scripts/stage-assets.sh ${{ env.binary }}.app/Contents/MacOS/assets
           hdiutil create -fs HFS+ -volname "${{ env.binary }}" -srcfolder ${{ env.binary }}.app ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ env.binary }}-macOS-${{ matrix.arch }}.dmg
           name: macOS-${{ matrix.arch }}
@@ -183,7 +183,7 @@ jobs:
         run: |
           npm ci && npx playwright install --with-deps chromium
           npx playwright test --grep @release-smoke
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: release-smoke-report
