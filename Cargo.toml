@@ -32,7 +32,7 @@ e2e = ["dep:wasm-bindgen", "dep:js-sys"]
 smoke = ["bevy/bevy_ci_testing"]
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["wav"] }
+bevy = { version = "0.20.0", features = ["wav"] }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
 rand = { version = "0.10", default-features = false }
 getrandom = "0.4"
